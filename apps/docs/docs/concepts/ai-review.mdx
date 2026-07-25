@@ -1,0 +1,55 @@
+---
+title: AI review
+description: Wire the DB-X MCP server into Claude Code, Cursor, or Cline.
+---
+
+DB-X ships an MCP (Model Context Protocol) server that exposes the schema
+graph, the diff, the snapshot history, and the Shadow-DB report as tools so an
+AI agent can reason about a schema change against the **real database**.
+
+:::note[Roadmap]
+Ships in **DB-X v0.3** — see [roadmap](../about/roadmap.mdx). Today the
+companion command in Infra-X (`infra-x mcp`, [issue #20](https://github.com/rtorcato/infra-x/issues/20))
+provides the same surface for generic infrastructure.
+:::
+
+## What it exposes
+
+Read-only MCP tools, never `apply` or `destroy`:
+
+- `describe` — full graph + plan + state, optimised for LLM context.
+- `explain <id>` — what a single table / column is, what depends on it, blast
+  radius if you drop it.
+- `graph [--format=mermaid|dot]` — dependency graph.
+- `preview` — the diff against the live schema.
+- `snapshot-history` — every revision in the Time Machine.
+- `shadow-preview` — the JSON report from a Shadow-DB run.
+
+## Install in Claude Code
+
+```jsonc
+// ~/.claude/config.json (example)
+{
+  "mcpServers": {
+    "db-x": {
+      "command": "pnpm",
+      "args": ["db-x", "mcp", "./dbx.tsx"]
+    }
+  }
+}
+```
+
+Now any Claude Code session in that project can answer "is it safe to drop the
+`legacy_status` column?" by walking the live schema, not a guess.
+
+## Install in Cursor and Cline
+
+Both honour the same MCP server contract. Add the same command to your editor's
+MCP settings — the tool surface and JSON schema are identical.
+
+## Why this is the wedge
+
+Most migration tools are a black box at PR-review time. A reviewer can read
+the DDL but can't easily check what depends on the affected table without
+opening a SQL client. The MCP server collapses that gap: the AI assistant can
+inspect the live schema *while* reviewing the PR.

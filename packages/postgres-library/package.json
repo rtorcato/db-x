@@ -1,0 +1,35 @@
+{
+  "name": "@db-x/postgres-library",
+  "version": "0.0.0-alpha.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "Postgres schema components for DB-X: DatabaseTarget, Postgres, Extension, Table, Column, Index, SeedData, DbUser. Adds production-style connection target, column rename, and AI-readable descriptions on top of the DB-X postgres surface.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "test": "vitest --passWithNoTests",
+    "test:run": "vitest run --passWithNoTests"
+  },
+  "peerDependencies": {
+    "@db-x/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@db-x/runtime": "workspace:*",
+    "@types/node": "^22",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

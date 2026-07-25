@@ -1,0 +1,34 @@
+{
+  "name": "@db-x/cli",
+  "version": "0.1.0-alpha.0",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "description": "The db-x CLI — preview, apply, destroy, refresh, state.",
+  "bin": {
+    "db-x": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "test": "vitest --passWithNoTests",
+    "test:run": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "@db-x/runtime": "workspace:*",
+    "picocolors": "^1.0.1",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

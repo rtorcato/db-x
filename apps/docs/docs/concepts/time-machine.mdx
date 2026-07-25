@@ -1,0 +1,65 @@
+---
+title: Time Machine
+description: Snapshot, restore, history, and diff for your schema.
+---
+
+The **Time Machine** is the part of DB-X that no other migration tool ships
+today. Every apply is bracketed by a structured snapshot; every snapshot is
+addressable; every restore is one command.
+
+:::note[Roadmap]
+The Time Machine commands ship in **DB-X v0.1**. Today the components and the
+state file are in place; the driver wiring is the next milestone — see
+[roadmap](../about/roadmap.mdx).
+:::
+
+## The mental model
+
+```
+revision 7  ← latest
+revision 6  ← took a pg_dump snapshot before applying
+revision 5
+revision 4  ← labelled "before todos.priority"
+revision 3
+revision 2
+revision 1  ← initial schema
+```
+
+Every successful `db-x apply` advances the revision and pins a snapshot id to
+the new state row. `db-x history` walks back through them; `db-x diff` shows
+the DDL delta between any two; `db-x restore` rolls the live database forward
+or backward.
+
+## Commands
+
+```bash
+db-x snapshot create [--label "..."]   # take a snapshot, link to current state
+db-x snapshot list                     # one row per snapshot
+db-x history                           # one row per state revision
+db-x diff <revA> <revB>                # DDL diff between two revisions
+db-x restore [--to <label|id|rev>]     # restore (defaults to previous)
+```
+
+## Snapshot drivers
+
+Snapshotting is pluggable so it can target real production setups:
+
+- **`@db-x/snapshot-pg-dump`** — `pg_dump --schema-only`. Self-hosted Postgres.
+- **`@db-x/snapshot-rds`** — AWS RDS `CreateDBSnapshot` / `RestoreDBInstanceFromDBSnapshot`.
+- **`@db-x/snapshot-cloud-sql`** — Google Cloud SQL snapshot API.
+- **Bring your own** — implement the `SnapshotDriver` interface; ship it as
+  `@your-org/db-x-snapshot-<provider>`.
+
+## What's in scope
+
+- Schema-only. The Time Machine deals with structure, not row data.
+- One database per apply tree.
+- Postgres in v0.1; MySQL parity in v1.0.
+
+## What's out of scope
+
+- Data migrations. Use `<SeedData>` for one-shot inserts; use your ORM's
+  scripts for backfills.
+- Cross-database schema diffs (different engines, same schema).
+- PITR (point-in-time-recovery). That's a provider-level feature, not a
+  schema-tool concern.

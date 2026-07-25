@@ -1,0 +1,81 @@
+---
+title: Quickstart (Docker)
+description: Run a DB-X schema against a Postgres container managed by Compose.
+---
+
+This walkthrough mirrors the runnable `examples/dbx/postgres/infra.tsx` flow in the repo.
+The schema lives in a single JSX file; `infra-x apply` stands up Postgres
+inside a Compose stack and applies the schema against it.
+
+## 1. Clone the demo
+
+```bash
+git clone https://github.com/rtorcato/infra-x.git
+cd infra-x
+pnpm install
+cd examples/dbx/postgres
+cp .env.example .env  # optional — defaults work out of the box
+```
+
+## 2. Inspect the schema
+
+`examples/dbx/postgres/infra.tsx` mixes an Infra-X `<Service>` (which boots Postgres in
+Compose) with the DB-X `<Postgres>` / `<Table>` components from
+`@db-x/postgres-library`:
+
+```tsx
+/** @jsxRuntime automatic */
+/** @jsxImportSource @infra-x/runtime */
+
+import { DockerCompose, Service } from '@infra-x/docker-library';
+import { Column, Postgres, Table } from '@db-x/postgres-library';
+
+<DockerCompose project="todos-stack">
+  <Service name="db" image="postgres:16-alpine" /* …env… */>
+    <Postgres name="todos-db">
+      <Table name="todos">
+        <Column name="id" type="serial" primaryKey />
+        <Column name="title" type="text" notNull />
+        <Column name="done" type="boolean" notNull default="false" />
+      </Table>
+    </Postgres>
+  </Service>
+</DockerCompose>;
+```
+
+## 3. Preview the plan
+
+```bash
+pnpm preview:infra
+```
+
+This renders the JSX, computes the diff against `.infrax/state.json`, and
+prints what would change — without touching Docker or Postgres.
+
+## 4. Apply
+
+```bash
+pnpm apply:infra
+```
+
+`infra-x` will:
+
+1. Start the `db` service via `docker compose up -d`.
+2. Wait for Postgres to accept connections.
+3. Create the database, install extensions, create tables and columns.
+4. Persist the new state to `.infrax/state.json`.
+
+## 5. Tear down
+
+```bash
+pnpm destroy:infra
+```
+
+Reverses everything in the right order: drops tables, then drops the database,
+then stops and removes the Compose stack.
+
+## Next steps
+
+- Connect a real managed DB → [Quickstart (managed DB)](./quickstart-managed.mdx)
+- Add snapshots and restore → [Time Machine](../concepts/time-machine.mdx)
+- Catch dangerous migrations early → [Shadow-DB preview](../concepts/shadow-db.mdx)

@@ -1,0 +1,51 @@
+---
+title: Shadow-DB preview
+description: Dry-run your DDL against an ephemeral copy and get a structured report.
+---
+
+`db-x preview --shadow` answers the question every DBA quietly worries about:
+*how long will this migration lock the table?*
+
+:::note[Roadmap]
+Ships in **DB-X v0.2** — see [roadmap](../about/roadmap.mdx).
+:::
+
+## How it works
+
+1. Spin an ephemeral Postgres container or fork a managed-snapshot-based copy.
+2. Apply the planned DDL against the copy.
+3. Capture timings, lock waits, and any errors.
+4. Tear the copy down.
+5. Emit a structured JSON report.
+
+## The report shape
+
+```jsonc
+{
+  "schema": "db-x.shadow-preview/v1",
+  "target": "postgres://...",
+  "snapshot": "snapshot-abc",
+  "actions": [
+    {
+      "id": "todos.priority",
+      "ddl": "ALTER TABLE todos ADD COLUMN priority int DEFAULT 0 NOT NULL",
+      "durationMs": 4823,
+      "locks": [
+        { "mode": "AccessExclusiveLock", "object": "todos", "waitMs": 0 }
+      ],
+      "rowsAffected": 1500000,
+      "error": null
+    }
+  ]
+}
+```
+
+## Why it matters
+
+- The report is structured JSON — pipe it to a CI bot, a Slack hook, or an MCP
+  tool. No screen-scraping.
+- The Shadow-DB run happens **before** anyone touches production. By the time
+  the real `db-x apply` runs, the timings are known quantities.
+- Combined with [AI review](./ai-review.mdx), a Claude / Cursor session can
+  read the report and explain to the human in plain English why a particular
+  step is risky.

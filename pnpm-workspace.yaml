@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+  - 'examples/dbx/*'
+  - 'apps/*'
+allowBuilds:
+  core-js: false
+  esbuild: true

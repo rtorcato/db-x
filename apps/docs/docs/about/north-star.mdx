@@ -1,0 +1,50 @@
+---
+title: North star
+description: What DB-X is trying to be when it grows up.
+---
+
+> **Make production-grade database schema deployment as ergonomic as writing a
+> JSX component — with a Time Machine for your schema and AI review built in.**
+
+That's the whole pitch.
+
+## The five capabilities
+
+A miss on any one isn't fatal; together they are the wedge.
+
+| Capability | Drizzle / Flyway | Prisma | DB-X |
+| --- | --- | --- | --- |
+| Declarative schema | DSL | PSL | **JSX** |
+| Time Machine for schema | — | — | **snapshot + restore + history + diff** |
+| Plan / preview before apply | — | — | **shadow-DB + lock report** |
+| AI-reviewable diff | — | — | **MCP server** |
+| Schema → ORM types | manual | built-in (for Prisma) | **export for any ORM** |
+
+## Audience
+
+- **Primary:** application engineering teams that already use Drizzle /
+  Prisma / Kysely and currently deploy schema changes by hand,
+  `drizzle-kit push`, or Flyway. They want a CI-safe gate with rollback.
+- **Secondary:** Infra-X users who want richer DB tooling than the reference
+  `@infra-x/postgres-library` and prefer the focused `db-x` CLI.
+- **Not:** greenfield solo devs running migrations from their laptop —
+  Drizzle is great for them; we don't displace it.
+
+## Non-goals
+
+- **No ORM.** No query DSL, no runtime data-access helpers, no connection
+  pool. We do not compete with Drizzle's query layer or Prisma Client.
+- **No data migrations as a first-class concept.** Schema only. Backfills
+  happen via explicit `<SeedData>` or your ORM's scripts; we don't model them.
+- **No cross-database schema diffs.** v0.x targets one database per apply tree.
+- **No new IaC pitch.** DB-X is not "Terraform for databases" — it's a
+  focused tool on top of an existing runtime.
+
+## How we'll know it worked
+
+- A team that uses Drizzle in production replaces `drizzle-kit push` with
+  `db-x apply` in their CI pipeline.
+- A PR-review tool (Claude / Cursor) answers "is this schema change safe to
+  merge?" by talking to `db-x mcp` against the real DB.
+- An on-call engineer rolls back a bad schema deploy with one command in
+  under 60 seconds.

@@ -1,0 +1,75 @@
+---
+title: Introduction
+description: Production-grade database schema deployment, with a Time Machine and AI review.
+slug: /
+sidebar_position: 0
+---
+
+# DB-X
+
+**Production-grade database schema deployment, with a Time Machine and AI review.**
+
+DB-X is a schema deployment and migration tool built on the [Infra-X](https://infra-x.dev)
+runtime. Same JSX-as-IaC mental model, specialised for relational databases:
+write your schema declaratively, preview the change, apply it with snapshots and
+rollback, and let an AI agent review it before it ships.
+
+It is the part of Drizzle / Prisma / Flyway that runs in **production** — not
+the query DSL. You keep Drizzle (or whatever ORM you like) for your application
+code; DB-X owns the *deployment* of the schema underneath it.
+
+```tsx
+import { Column, Postgres, Table } from '@db-x/postgres-library';
+
+<Postgres name="todos-db" {...PG}>
+  <Table name="todos">
+    <Column name="id" type="serial" primaryKey />
+    <Column name="title" type="text" notNull />
+    <Column name="done" type="boolean" notNull default="false" />
+  </Table>
+</Postgres>;
+```
+
+## Two distributions, one schema
+
+DB-X ships **the same schema** to two runtime targets:
+
+| File | Runtime parent | CLI | Use case |
+| --- | --- | --- | --- |
+| `dbx.tsx` | `<DatabaseTarget url={...}>` | `db-x` | Production. Points at an existing managed DB. |
+| `infra.tsx` | `<Service image="postgres:16-alpine">` | `infra-x` | Local dev / CI. Stands the DB up via Compose. |
+
+Only the runtime parent differs — that's what proves DB-X composes with the
+broader Infra-X stack without forking the runtime.
+
+## Packages
+
+DB-X is published as a small set of npm packages built on the Infra-X runtime.
+Each component is created with `defineComponent`; import a package and its
+components register automatically.
+
+- **[`@db-x/postgres-library`](./reference/components.mdx)** — declarative Postgres schema components: `Postgres`, `Table`, `Column`, indexes, and seed data. The API surface you write your schema against.
+- **[`@db-x/runtime`](./reference/cli.mdx)** — the DB-X runtime and `db-x` CLI: preview, apply, snapshot, and restore a schema against a managed or Compose-hosted database.
+
+The full generated [API reference](./api/index.md) is derived from the package
+sources.
+
+## Where to go next
+
+- **[Install](./getting-started/install.mdx)** — Get `db-x` on your machine.
+- **[Quickstart (Docker)](./getting-started/quickstart-docker.mdx)** — Run the schema against a local Postgres in Compose.
+- **[Quickstart (managed DB)](./getting-started/quickstart-managed.mdx)** — Point DB-X at an RDS / Cloud SQL / Supabase URL.
+- **[Time Machine](./concepts/time-machine.mdx)** — Snapshots, restore, history, diff.
+- **[Shadow-DB preview](./concepts/shadow-db.mdx)** — Catch the bad migration on a copy first.
+- **[AI review](./concepts/ai-review.mdx)** — Wire the MCP server into Claude / Cursor / Cline.
+- **[Why DB-X](./about/why-db-x.mdx)** — How this relates to Drizzle, Prisma, and Flyway.
+
+## Status
+
+**Experimental.** The `@db-x/runtime` and `@db-x/postgres-library` packages are
+scaffolded; the standalone `db-x` CLI is not built yet. The `infra.tsx` flow
+described in [Quickstart (Docker)](./getting-started/quickstart-docker.mdx) is
+runnable today via the Infra-X CLI; the `dbx.tsx` flow is design-only until the
+DB-X CLI lands.
+
+See the [roadmap](./about/roadmap.mdx) for sequencing.

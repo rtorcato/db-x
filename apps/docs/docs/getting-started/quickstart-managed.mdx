@@ -1,0 +1,77 @@
+---
+title: Quickstart (managed DB)
+description: Point DB-X at an existing RDS, Cloud SQL, or Supabase URL.
+---
+
+For an existing managed Postgres, swap the Infra-X `<Service>` parent for the
+DB-X `<DatabaseTarget>` parent. The schema below it is identical to the
+Docker quickstart — only the connection wrapper changes.
+
+:::warning[CLI not yet shipped]
+The dedicated `db-x` CLI is on the [roadmap](../about/roadmap.mdx). Until it
+lands, this file is design-only — but the schema syntax below is the contract
+the CLI will honour. The `infra.tsx` flow in [Quickstart (Docker)](./quickstart-docker.mdx)
+runs today.
+:::
+
+## Schema file
+
+```tsx
+/** @jsxRuntime automatic */
+/** @jsxImportSource @db-x/runtime */
+
+import {
+  Column,
+  DatabaseTarget,
+  Postgres,
+  Table,
+} from '@db-x/postgres-library';
+
+const dbUrl = process.env.DATABASE_URL!;
+
+export default (
+  <DatabaseTarget url={dbUrl}>
+    <Postgres name="todos-db">
+      <Table name="todos">
+        <Column name="id" type="serial" primaryKey />
+        <Column name="title" type="text" notNull />
+        <Column name="done" type="boolean" notNull default="false" />
+      </Table>
+    </Postgres>
+  </DatabaseTarget>
+);
+```
+
+## Preview against the live database
+
+```bash
+DATABASE_URL="postgres://user:pass@host:5432/todos_db" \
+  pnpm db-x preview ./dbx.tsx
+```
+
+The output tells you exactly what DDL `db-x apply` would run against the live
+database — and, once shipped, what Shadow-DB preview reports about lock impact
+and timings.
+
+## Apply with a snapshot first
+
+```bash
+pnpm db-x snapshot create --label "before todos.priority"
+pnpm db-x apply ./dbx.tsx
+```
+
+`db-x snapshot create` takes a `pg_dump --schema-only` (self-hosted) or invokes
+the managed provider's snapshot API (RDS, Cloud SQL) and pins the snapshot id
+to the new state revision. If anything goes wrong:
+
+```bash
+pnpm db-x restore --to "before todos.priority"
+```
+
+restores the schema in seconds.
+
+## Next steps
+
+- Browse snapshot history → [Time Machine](../concepts/time-machine.mdx)
+- Stage changes against a copy → [Shadow-DB preview](../concepts/shadow-db.mdx)
+- Wire AI review → [AI review](../concepts/ai-review.mdx)

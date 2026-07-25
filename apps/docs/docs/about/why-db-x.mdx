@@ -1,0 +1,65 @@
+---
+title: Why DB-X?
+description: How DB-X relates to Drizzle, Prisma, Flyway, and Infra-X.
+---
+
+## The gap
+
+Drizzle and Prisma own the application-side experience: query DSL, types,
+dev migrations. Nobody owns the **operations side** well — the part that runs
+in CI, in production, against a real database with users on it.
+
+That's the wedge.
+
+## How DB-X relates to your ORM
+
+DB-X **does not** ship a query DSL, a connection pool, or runtime data-access
+helpers. Your application code keeps using Drizzle / Prisma / Kysely / raw SQL
+— whatever fits. DB-X just owns the schema that those tools read from.
+
+The `db-x types` command (planned, v0.4) emits the live schema as TypeScript
+types, optionally Drizzle schema files, or sqlc-style declarations. The
+intent is to make ORM-side definitions a derived artefact of the deployed
+truth, not the other way around.
+
+## How DB-X relates to Flyway / Liquibase
+
+Flyway and Liquibase model migrations as ordered SQL files. That's a fine
+shape for "apply these N scripts in order" but it leaves three things on the
+floor that DB-X picks up:
+
+- **Drift detection.** Flyway doesn't reconcile the live schema against
+  intent — it just records what ran. DB-X diffs the live database against the
+  declared JSX on every preview.
+- **Snapshot + restore.** Flyway has no first-class snapshot story. DB-X's
+  Time Machine wraps every apply in a structured snapshot pinned to the
+  state revision.
+- **AI review.** Flyway's diff is a folder of SQL files. DB-X's diff is a
+  structured plan that an MCP server can hand to Claude / Cursor.
+
+## How DB-X relates to Infra-X
+
+Same runtime, different distribution. See the
+[architecture sketch](./roadmap.mdx#architecture-sketch) for the package
+layout.
+
+- **Shared core.** Both projects use `@infra-x/runtime` — the JSX
+  reconciler, the diff engine, the state file, the apply/destroy lifecycle.
+  DB-X does not fork any of it.
+- **DB-X is the focused distribution** for teams whose primary concern is
+  the database. The `db-x` CLI ships only the DB libraries plus db-specific
+  subcommands (`snapshot`, `restore`, `history`, `diff`, `preview --shadow`).
+- **Components compose.** A DB-X `<Postgres>` / `<Table>` is the same kind
+  of `defineComponent` resource as anything in Infra-X — drop one inside an
+  Infra-X `<Phase>` tree and pick up DB-X's features without leaving Infra-X.
+
+Think of Infra-X as the platform; DB-X is the first vertical built on top of
+it with its own brand and audience.
+
+## What DB-X isn't
+
+- An ORM. Your query layer keeps doing what it does.
+- A data-migration tool. Backfills happen via explicit `<SeedData>` or your
+  ORM's scripts; we don't model row-level migrations as a first-class concept.
+- A cross-engine schema differ. v0.x targets one database per apply tree.
+- A new IaC pitch. The general-purpose IaC story belongs to Infra-X.

@@ -1,0 +1,193 @@
+.hero {
+	padding: 5rem 0 4rem;
+	background:
+		radial-gradient(
+			80% 80% at 50% 0%,
+			rgba(16, 185, 129, 0.12),
+			transparent 60%
+		),
+		radial-gradient(
+			60% 60% at 100% 100%,
+			rgba(34, 211, 238, 0.08),
+			transparent 60%
+		);
+}
+
+.heroTitle {
+	font-size: clamp(2.5rem, 6vw, 4.5rem);
+	font-weight: 800;
+	letter-spacing: -0.02em;
+	margin-bottom: 0.5rem;
+}
+
+.heroTagline {
+	font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+	font-weight: 600;
+	margin-bottom: 1rem;
+	color: var(--ifm-color-emphasis-800);
+}
+
+.heroDesc {
+	font-size: 1.125rem;
+	max-width: 48rem;
+	margin-bottom: 2rem;
+	color: var(--ifm-color-emphasis-700);
+}
+
+.accent {
+	background: linear-gradient(90deg, #10b981, #22d3ee);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	font-weight: 600;
+}
+
+.heroActions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+}
+
+.sample {
+	padding: 4rem 0;
+	border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+/* Tabbed code window (mirrors api-common's hero showcase). */
+.codeWindow {
+	width: 100%;
+	max-width: 680px;
+	margin-top: 1.5rem;
+	text-align: left;
+}
+.codeFile {
+	padding: 0 4px 8px;
+	font: 500 12px var(--ifm-font-family-monospace);
+	color: var(--bc-faint);
+}
+
+/* Tab bar — segmented pill control, not plain text buttons. */
+.codeTabs :global(.tabs) {
+	gap: 8px;
+	padding: 0 0 14px;
+}
+.codeTabs :global(.tabs__item) {
+	padding: 6px 14px;
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.2;
+	color: var(--bc-muted);
+	border: 1px solid var(--bc-border2);
+	border-radius: 8px;
+	transition:
+		background 0.15s,
+		color 0.15s,
+		border-color 0.15s;
+}
+.codeTabs :global(.tabs__item:hover) {
+	background: var(--bc-surface2);
+	color: var(--bc-heading);
+}
+.codeTabs :global(.tabs__item--active) {
+	background: var(--bc-accent-soft);
+	border-color: var(--bc-accent-border);
+	color: var(--bc-accent);
+}
+.codeTabs :global(.margin-top--md) {
+	margin-top: 0 !important;
+}
+/* CodeBlock brings its own chrome — strip it so it blends into the window. */
+.codePre {
+	margin: 0;
+	border: 1px solid var(--bc-border2);
+	border-radius: 14px;
+	box-shadow: var(--bc-shadow);
+}
+.codePre :global(pre) {
+	margin: 0;
+	padding: 16px;
+	background: transparent;
+	font: 500 12.5px / 1.8 var(--ifm-font-family-monospace);
+}
+
+.sectionHeading {
+	font-size: clamp(1.75rem, 3vw, 2.5rem);
+	font-weight: 700;
+	margin-bottom: 0.75rem;
+}
+
+.sectionLede {
+	font-size: 1.05rem;
+	color: var(--ifm-color-emphasis-700);
+	max-width: 50rem;
+}
+
+.pillars {
+	padding: 4rem 0;
+	border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.pillarGrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 1.5rem;
+}
+
+.pillar {
+	padding: 1.25rem;
+	border-radius: 10px;
+	background: var(--ifm-color-emphasis-100);
+}
+
+.pillar h3 {
+	margin-top: 0;
+	margin-bottom: 0.5rem;
+	font-size: 1.125rem;
+}
+
+.pillar p {
+	margin: 0;
+	color: var(--ifm-color-emphasis-700);
+}
+
+.sectionLinks {
+	padding: 4rem 0 6rem;
+	border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.cardGrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: 1rem;
+	margin-top: 1.5rem;
+}
+
+.card {
+	display: block;
+	padding: 1.25rem;
+	border-radius: 10px;
+	border: 1px solid var(--ifm-color-emphasis-200);
+	background: var(--ifm-background-surface-color);
+	color: inherit;
+	text-decoration: none;
+	transition:
+		border-color 120ms ease,
+		transform 120ms ease;
+}
+
+.card:hover {
+	border-color: var(--ifm-color-primary);
+	transform: translateY(-2px);
+	text-decoration: none;
+}
+
+.card h3 {
+	margin-top: 0;
+	margin-bottom: 0.5rem;
+	font-size: 1.125rem;
+}
+
+.card p {
+	margin: 0;
+	color: var(--ifm-color-emphasis-700);
+}

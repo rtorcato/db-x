@@ -1,0 +1,79 @@
+---
+title: Migrating from @infra-x/postgres-library
+description: How to move existing Infra-X schema definitions over to @db-x/postgres-library.
+---
+
+DB-X grew out of the work the `@infra-x/postgres-library` reference library
+needed. Once DB-X ships its first stable release the Infra-X-side Postgres
+library is deprecated and eventually removed — tracked by
+[issue #24](https://github.com/rtorcato/infra-x/issues/24).
+
+The migration is mostly **import swap + parent swap** and runs in three steps.
+
+## 1. Swap the imports
+
+```diff
+- import {
+-   Column,
+-   Index,
+-   Postgres,
+-   Table,
+- } from '@infra-x/postgres-library';
++ import {
++   Column,
++   Index,
++   Postgres,
++   Table,
++ } from '@db-x/postgres-library';
+```
+
+The component names and prop shapes match for the v0.x surface. New props
+specific to DB-X (richer column diff, `<DatabaseTarget>`, snapshot annotations)
+are additive.
+
+## 2. Swap the parent
+
+Old Infra-X library assumed a `<Service>` running Postgres in Compose. DB-X
+gives you both options — use whichever fits the deployment target.
+
+### Compose target (local dev / CI)
+
+Keep the existing `<Service>` parent; nothing else changes:
+
+```tsx
+<Service image="postgres:16-alpine" env={PG_ENV}>
+  <Postgres name="todos-db">{/* tables */}</Postgres>
+</Service>
+```
+
+### Managed target (production)
+
+Replace the `<Service>` parent with `<DatabaseTarget>`:
+
+```tsx
+<DatabaseTarget url={process.env.DATABASE_URL!}>
+  <Postgres name="todos-db">{/* tables */}</Postgres>
+</DatabaseTarget>
+```
+
+## 3. Swap the CLI (once DB-X ships)
+
+While the `db-x` CLI is in flight, keep using `infra-x apply` — DB-X
+components are still `defineComponent` resources on the same runtime. When
+`db-x` ships, switch over to pick up snapshot, restore, history, diff, and the
+MCP server.
+
+```diff
+- pnpm infra-x apply ./infra.tsx
++ pnpm db-x apply ./dbx.tsx
+```
+
+## Deprecation timeline
+
+| When | What |
+| --- | --- |
+| **DB-X v0.0–v0.1** | `@infra-x/postgres-library` keeps shipping. No deprecation notice. |
+| **DB-X v0.1 / Infra-X v0.2** | `@infra-x/postgres-library` README adds a "use `@db-x/postgres-library`" banner. Examples in this repo migrate. |
+| **DB-X v1.0 / Infra-X v0.3** | `@infra-x/postgres-library` deleted from the workspace. |
+
+`@infra-x/php-library` is unrelated (PHP image builder, not a database) and stays.

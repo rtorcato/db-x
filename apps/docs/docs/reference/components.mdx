@@ -1,0 +1,127 @@
+---
+title: Components reference
+description: Schema components shipped in @db-x/postgres-library.
+---
+
+The DB-X Postgres component library ships a small, focused set of schema
+primitives. Each is a `defineComponent` from `@infra-x/runtime`, so they
+compose naturally with Infra-X resources.
+
+:::note[Auto-generated API]
+A full TypeDoc-generated reference is on the way — see
+[issue #34](https://github.com/rtorcato/infra-x/issues/34). The summary here
+covers the shipped surface today.
+:::
+
+## `<DatabaseTarget>`
+
+Connection target for production-direct deployments. Reads connection info
+from a `postgres://` URL.
+
+```tsx
+<DatabaseTarget url={process.env.DATABASE_URL!}>
+  {/* Postgres tree goes here */}
+</DatabaseTarget>
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `url` | `string` | Connection URL. Required. |
+| `description` | `string?` | Surfaced in `describe` output. |
+
+## `<Postgres>`
+
+The database itself. Children declare schema objects.
+
+```tsx
+<Postgres name="todos-db">
+  <Extension name="pgcrypto" />
+  <Table name="todos">...</Table>
+</Postgres>
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `name` | `string` | Database name. Required. |
+| `owner` | `string?` | Database owner role. |
+
+## `<Extension>`
+
+Installs a Postgres extension idempotently.
+
+```tsx
+<Extension name="pgcrypto" />
+<Extension name="vector" version="0.7.4" />
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `name` | `string` | Extension name. |
+| `version` | `string?` | Pin a specific version when needed. |
+
+## `<Table>`
+
+A table; children declare columns and indexes.
+
+```tsx
+<Table name="todos">
+  <Column name="id" type="serial" primaryKey />
+  <Column name="title" type="text" notNull />
+  <Index columns={['title']} unique />
+</Table>
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `name` | `string` | Table name. |
+| `from` | `string?` | Previous name — triggers `RENAME TABLE` when changed. |
+
+## `<Column>`
+
+A column. Detect type, default, NOT NULL, and UNIQUE changes is tracked in
+[issue #5](https://github.com/rtorcato/infra-x/issues/5).
+
+```tsx
+<Column name="title" type="text" notNull />
+<Column name="status" from="legacy_status" type="text" default="'pending'" />
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `name` | `string` | Column name. |
+| `type` | `string` | SQL type. |
+| `from` | `string?` | Previous name — triggers `RENAME COLUMN`. |
+| `primaryKey` | `boolean?` | |
+| `notNull` | `boolean?` | |
+| `default` | `string?` | SQL expression. |
+| `unique` | `boolean?` | |
+
+## `<Index>`
+
+A regular or unique index on the parent `<Table>`.
+
+```tsx
+<Index columns={['user_id', 'created_at']} />
+<Index columns={['email']} unique />
+```
+
+## `<SeedData>`
+
+One-shot seed inserts, run once at table creation.
+
+```tsx
+<SeedData
+  rows={[
+    { title: 'Pick the project', done: false },
+    { title: 'Ship it',          done: false },
+  ]}
+/>
+```
+
+## `<DbUser>`
+
+A database role with grants.
+
+```tsx
+<DbUser name="todos_ro" password={process.env.RO_PASS!} grants={['SELECT']} />
+```

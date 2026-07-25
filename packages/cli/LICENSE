@@ -5,7 +5,7 @@ Parameters
 Licensor:             Richard Torcato
 
 Licensed Work:        DB-X Core
-                      (@db-x/runtime, @db-x/cli)
+                      (@db-x/runtime, @db-x/cli, @db-x/runtime)
                       The Licensed Work is (c) 2025-2026 Richard Torcato.
 
 Additional Use Grant: You may make production use of the Licensed Work,

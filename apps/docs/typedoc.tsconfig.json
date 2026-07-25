@@ -1,0 +1,24 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"skipLibCheck": true
+	},
+	"include": [
+		"../../packages/runtime/src/**/*.ts",
+		"../../packages/runtime/src/**/*.tsx",
+		"../../packages/postgres-library/src/**/*.ts",
+		"../../packages/postgres-library/src/**/*.tsx"
+	],
+	"exclude": [
+		"../../packages/*/src/**/*.test.ts",
+		"../../packages/*/src/**/*.test.tsx",
+		"../../packages/*/src/**/*.spec.ts",
+		"../../packages/*/src/**/*.spec.tsx",
+		"../../packages/*/dist",
+		"../../packages/*/node_modules",
+		"../../OLD",
+		"../../apps/dashboard",
+		"../../examples"
+	]
+}

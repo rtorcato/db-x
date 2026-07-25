@@ -1,0 +1,53 @@
+---
+title: CLI reference
+description: The db-x command (planned). Runnable today via infra-x.
+---
+
+:::warning[Not yet shipped]
+The dedicated `db-x` binary is on the roadmap. The reference below is the
+contract the CLI will honour. To run a DB-X schema today, use the Infra-X CLI
+against `examples/dbx/postgres/infra.tsx` — see [Quickstart (Docker)](../getting-started/quickstart-docker.mdx).
+:::
+
+## Commands
+
+```
+db-x preview <file>            Render JSX, diff against state, print the plan
+db-x preview --shadow <file>   Same, plus run the DDL on an ephemeral copy and report
+db-x apply <file>              Render, diff, execute changes, persist state
+db-x destroy <file>            Tear down everything in state (reverse order)
+db-x state                     Print the contents of .infrax/state.json
+
+db-x snapshot create [--label "..."]
+db-x snapshot list
+db-x history
+db-x diff <revA> <revB>
+db-x restore [--to <label|id|rev>]
+
+db-x mcp <file>                MCP server: describe / explain / graph / preview / history
+db-x types <file>              Emit TypeScript / Drizzle / sqlc types from the live schema
+```
+
+## Flags
+
+| Flag | Description |
+| --- | --- |
+| `--yes`, `-y` | Skip confirmation prompts (for CI). |
+| `--json` | Structured stdout for `preview`, `state`, `history`. |
+| `--phase=<phase>` | Run only the named phase (`setup` / `monitoring` / `backup` / `teardown`). |
+
+## Environment
+
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | Default connection string used by `<DatabaseTarget>` when no `url` prop is given. |
+| `DEBUG=db-x` | Enable debug logging. |
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success. |
+| 1 | Plan or apply failed. |
+| 2 | Bad arguments / unknown command. |
+| 130 | Cancelled (SIGINT). |

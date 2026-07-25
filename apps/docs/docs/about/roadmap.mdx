@@ -1,0 +1,55 @@
+---
+title: Roadmap
+description: The DB-X release sequence and where it sits today.
+---
+
+DB-X lives in the [`rtorcato/infra-x`](https://github.com/rtorcato/infra-x)
+monorepo. Releases ship per package under the `@db-x` npm scope, on their own
+cadence — independent of Infra-X.
+
+**No package starts before Infra-X v0.1 is out** — DB-X depends on a stable
+runtime contract.
+
+## Architecture sketch
+
+```
+@infra-x/runtime                ← shared JSX runtime, reconciler, state
+        │
+        ├── @db-x/runtime              ← thin re-export + DB-specific types
+        ├── @db-x/postgres-library      ← <Postgres>, <Table>, <Column>, …
+        ├── @db-x/mysql-library         ← parallel for MySQL
+        ├── @db-x/snapshot-pg-dump     ← pg_dump driver
+        ├── @db-x/snapshot-rds         ← AWS RDS snapshot driver
+        ├── @db-x/mcp                  ← MCP server
+        ├── @db-x/types-export         ← schema → .d.ts / Drizzle / sqlc
+        └── @db-x/cli                  ← `db-x` binary
+```
+
+## Sequence
+
+| Version | Theme | Headline |
+| --- | --- | --- |
+| **v0.0** | Scaffold + rich diff | Workspace packages exist; `<Table>` diff handles type / default / NOT NULL changes and column renames via `from=`. Forks the work `@infra-x/postgres-library` would otherwise need to do, then upstreams it. |
+| **v0.1** | Schema Time Machine | `db-x snapshot create`, `db-x restore <id>`, `db-x history`, `db-x diff <revA> <revB>`. Snapshot id linked to state revision. Postgres only. |
+| **v0.2** | Shadow-DB preview | `db-x preview --shadow` spins an ephemeral copy, runs the DDL, returns a structured report (timings, locks, errors). |
+| **v0.3** | MCP server | `db-x mcp` exposes describe / explain / preview / snapshot-history / restore-preview as tools. The marketing-ready milestone. |
+| **v0.4** | Type export | Generate `.d.ts` from the live schema; add Drizzle schema emit as an optional second target. |
+| **v1.0** | MySQL parity | Managed-DB drivers, multi-environment apply. |
+
+## Live trackers
+
+- [#24 Phase 5 tracker](https://github.com/rtorcato/infra-x/issues/24) — DB-X-driven deprecation of the `@infra-x/postgres-library` and `@infra-x/mysql-library` libraries.
+- [#5 Rich column diff](https://github.com/rtorcato/infra-x/issues/5) — type / default / NOT NULL / UNIQUE detection in the Postgres `<Table>` component (v0.0 follow-up).
+- [#32 Docs site](https://github.com/rtorcato/infra-x/issues/32) — this site (Docusaurus migration; closed by the PR that lands these pages).
+- [#34 TypeDoc wiring](https://github.com/rtorcato/infra-x/issues/34) — auto-generated API reference for both the Infra-X and DB-X docs sites.
+
+## Relationship to Infra-X
+
+- DB-X depends on `@infra-x/runtime`; **Infra-X never depends on DB-X**. The
+  dependency points one way.
+- Components are reusable in both directions: an Infra-X user can drop
+  `<Table>` from `@db-x/postgres-library` inside an `<Infra>` tree and get
+  DB-X's richer features without switching CLIs.
+- The `db-x` CLI never exposes Infra-X's general-purpose `apply` for arbitrary
+  resource types — it's scoped to DB resources. Conversely Infra-X's CLI does
+  not expose `db-x snapshot` / `db-x restore`.

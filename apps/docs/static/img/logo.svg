@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Hexagon outline (flat top, pointy left/right) -->
+  <path d="M 60 32 L 46 7.75 L 18 7.75 L 4 32 L 18 56.25 L 46 56.25 Z"
+        stroke="white" stroke-width="3.5" stroke-linejoin="round" fill="none"/>
+  <!-- `<` — violet -->
+  <path d="M 26 22 L 18 32 L 26 42"
+        stroke="#8b5cf6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- `>` — cyan -->
+  <path d="M 38 22 L 46 32 L 38 42"
+        stroke="#22d3ee" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- `/` — white -->
+  <line x1="36" y1="20" x2="28" y2="44"
+        stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

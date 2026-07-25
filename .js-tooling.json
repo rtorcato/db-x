@@ -1,0 +1,41 @@
+{
+  "$schema": "https://rtorcato.github.io/js-tooling/schemas/lockfile.json",
+  "version": 2,
+  "config": {
+    "projectName": "db-x",
+    "language": "js",
+    "projectType": "library",
+    "typescript": {
+      "enabled": true,
+      "config": "base"
+    },
+    "linting": {
+      "tool": "biome"
+    },
+    "formatting": {
+      "tool": "biome"
+    },
+    "testing": {
+      "framework": "vitest",
+      "environment": "node"
+    },
+    "gitHooks": true,
+    "commitLint": false,
+    "semanticRelease": false,
+    "changesets": false,
+    "releasePlease": false,
+    "oxlint": false,
+    "securityAutomation": false,
+    "bundler": "none",
+    "treeshakeCheck": false,
+    "publint": false,
+    "badges": false,
+    "aiSetup": true,
+    "turborepo": false,
+    "nx": false,
+    "tailwind": false,
+    "bun": false
+  },
+  "writtenBy": "@rtorcato/js-tooling@2.59.0",
+  "writtenAt": "2026-07-25T20:58:55.095Z"
+}

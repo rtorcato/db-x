@@ -66,7 +66,7 @@ packages/cli                @db-x/cli                db-x binary
 packages/postgres-library   @db-x/postgres-library   schema components
 apps/docs                   Docusaurus site (db-x.dev)
 examples/postgres       runnable demo schema
-docs/                       GOALS.md, TODO.md (planning)
+docs/                       GOALS.md (design), large-scale.md (design note)
 ```
 
 ## Licensing

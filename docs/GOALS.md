@@ -1,5 +1,9 @@
 # DB-X Goals
 
+> **This is the design / vision doc — the *why*, the positioning, and the non-goals.**
+> The *roadmap and tasks* live in [GitHub milestones](https://github.com/rtorcato/db-x/milestones)
+> and issues, not here. Large-scale / sharding design lives in [`large-scale.md`](./large-scale.md).
+
 ## North star
 
 > **Make production-grade database schema deployment as ergonomic as
@@ -102,7 +106,7 @@ a checklist.
 Interim boundary hygiene that does *not* require a split:
 
 - Separate npm scope (`@db-x/*`) — already done.
-- Separate CLI binary (`db-x`) — planned in `docs/dbx/TODO.md`.
+- Separate CLI binary (`db-x`) — tracked in the [v0.0 milestone](https://github.com/rtorcato/db-x/milestones).
 - Separate Docusaurus docs site at `apps/dbx-docs/` — already scaffolded;
   deploy workflow is parked on a fix branch.
 - Separate milestone series on GitHub (`dbx-v0.0`, `dbx-v0.1`, …) tagged
@@ -122,25 +126,11 @@ Interim boundary hygiene that does *not* require a split:
 
 ## Sequencing
 
-This is the order we expect to ship in. **No package starts before
-Infra-X v0.1 is out** — DB-X depends on a stable runtime contract.
-
-1. **v0.0 — scaffold + rich diff.** Workspace packages exist; `<Table>`
-   diff handles type/default/NOT NULL changes and column renames via
-   `from=`. Forks the work `@infra-x/postgres-library` would otherwise
-   need to do, then upstreams it.
-2. **v0.1 — schema Time Machine.** `db-x snapshot create`,
-   `db-x restore <id>`, `db-x history`, `db-x diff <revA> <revB>`.
-   Snapshot id linked to state revision. Postgres only.
-3. **v0.2 — shadow-DB preview.** `db-x preview --shadow` spins an
-   ephemeral copy, runs the DDL, returns a structured report (timings,
-   locks, errors).
-4. **v0.3 — MCP server.** `db-x mcp` exposes describe / explain /
-   preview / snapshot-history / restore-preview as tools. This is the
-   marketing-ready milestone.
-5. **v0.4 — type export.** Generate `.d.ts` from the live schema; add
-   Drizzle schema emit as an optional second target.
-6. **v1.0 — MySQL parity, managed-DB drivers, multi-environment apply.**
+The shipping order and every task live in
+[GitHub milestones](https://github.com/rtorcato/db-x/milestones) (`v0.0 — Scaffold + rich
+diff` → `v1.1 — More SQL engines`) and their issues — that's the single source of truth.
+**No package starts before Infra-X v0.1 is out**; DB-X depends on a stable runtime
+contract.
 
 ## How we'll know it worked
 

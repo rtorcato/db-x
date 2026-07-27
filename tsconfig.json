@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/runtime" },
     { "path": "./packages/cli" },
-    { "path": "./packages/postgres-library" }
+    { "path": "./packages/postgres-library" },
+    { "path": "./packages/snapshot-pg-dump" }
   ]
 }

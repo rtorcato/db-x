@@ -8,3 +8,8 @@ node_modules/
 # local env overrides (copied from .env.example on first run); keep .env.example tracked.
 .env
 .env.local
+
+# SQLite database files created by `db-x apply`.
+*.db
+*.sqlite
+*.sqlite3

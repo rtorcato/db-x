@@ -27,6 +27,13 @@ export type {
 	DestructiveViolation,
 } from './guard.js'
 
+export type {
+	PrunePolicy,
+	SnapshotDriver,
+	SnapshotMode,
+	SnapshotRef,
+} from './snapshot.js'
+
 export {
 	acquireLock,
 	emptyState,

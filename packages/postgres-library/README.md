@@ -37,7 +37,7 @@ a thin re-export of `@db-x/runtime`).
   reviewing schema changes have human-written intent to read.
 - **`protect` on `<Postgres>`** — flag captured (and propagated through
   state) but the CLI enforcement is a v0.1 follow-up. See the parent
-  `docs/dbx/GOALS.md`.
+  `docs/GOALS.md`.
 
 ## Migration safety (lock contention)
 
@@ -76,5 +76,5 @@ is unit tested, but no CLI runs it end-to-end yet — that lands when the
 
 DB-X intentionally forks the surface so it can evolve faster than the
 db-x reference. Once the diff / rename / description work proves out,
-the plan (per `docs/dbx/GOALS.md`) is to upstream it back so the two
+the plan (per `docs/GOALS.md`) is to upstream it back so the two
 plugins converge again.

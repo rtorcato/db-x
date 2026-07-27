@@ -30,26 +30,24 @@ import { Column, Postgres, Table } from '@db-x/postgres-library';
 </Postgres>;
 ```
 
-## Two distributions, one schema
+## Standalone, or composed with Infra-X
 
-DB-X ships **the same schema** to two runtime targets:
+You run DB-X on its own with the `db-x` CLI: a schema file uses
+`<DatabaseTarget url={...}>` to point at any Postgres — a local container or a
+managed DB — and `db-x apply` runs the DDL. No Infra-X required.
 
-| File | Runtime parent | CLI | Use case |
-| --- | --- | --- | --- |
-| `dbx.tsx` | `<DatabaseTarget url={...}>` | `db-x` | Production. Points at an existing managed DB. |
-| `infra.tsx` | `<Service image="postgres:16-alpine">` | `infra-x` | Local dev / CI. Stands the DB up via Compose. |
-
-Only the runtime parent differs — that's what proves DB-X composes with the
-broader Infra-X stack without forking the runtime.
+Because `@db-x/runtime` re-exports the Infra-X runtime, the *same* schema
+components can also drop inside an Infra-X `<Service>` tree if you already use
+Infra-X — but that's optional, not the default.
 
 ## Packages
 
-DB-X is published as a small set of npm packages built on the Infra-X runtime.
-Each component is created with `defineComponent`; import a package and its
-components register automatically.
+DB-X is a small set of packages built on the Infra-X runtime (not on npm yet —
+see [Install](./getting-started/install.mdx)). Each component is created with
+`defineComponent`; import a package and its components register automatically.
 
 - **[`@db-x/postgres-library`](./reference/components.mdx)** — declarative Postgres schema components: `Postgres`, `Table`, `Column`, indexes, and seed data. The API surface you write your schema against.
-- **[`@db-x/runtime`](./reference/cli.mdx)** — the DB-X runtime and `db-x` CLI: preview, apply, snapshot, and restore a schema against a managed or Compose-hosted database.
+- **[`@db-x/cli`](./reference/cli.mdx)** — the `db-x` CLI. `preview`, `apply`, `destroy`, and `describe` ship today; snapshot / restore and Shadow-DB preview are on the [roadmap](./about/roadmap.mdx).
 
 The full generated [API reference](./api/index.md) is derived from the package
 sources.
@@ -66,10 +64,8 @@ sources.
 
 ## Status
 
-**Experimental.** The `@db-x/runtime` and `@db-x/postgres-library` packages are
-scaffolded; the standalone `db-x` CLI is not built yet. The `infra.tsx` flow
-described in [Quickstart (Docker)](./getting-started/quickstart-docker.mdx) is
-runnable today via the Infra-X CLI; the `dbx.tsx` flow is design-only until the
-DB-X CLI lands.
-
-See the [roadmap](./about/roadmap.mdx) for sequencing.
+**Experimental — do not point it at a database you care about.** The `db-x` CLI
+runs today: `preview`, `apply`, `destroy`, and `describe` work end-to-end
+against a real Postgres, as shown in [Quickstart (Docker)](./getting-started/quickstart-docker.mdx).
+Snapshot / restore (Time Machine), Shadow-DB preview, the MCP server, and type
+export are still on the [roadmap](./about/roadmap.mdx).

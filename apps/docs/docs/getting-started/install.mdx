@@ -1,42 +1,43 @@
 ---
 title: Install
-description: Get @db-x/postgres-library and (eventually) the db-x CLI on your machine.
+description: Get the db-x CLI and @db-x/postgres-library on your machine.
 ---
 
-import InstallTabs from '@site/src/components/InstallTabs';
+DB-X is a small set of packages under the `@db-x` scope: a per-engine schema
+library (`@db-x/postgres-library` today — MySQL and other engines are on the
+[roadmap](../about/roadmap.mdx)), the `@db-x/runtime`, and the `db-x` CLI in
+`@db-x/cli`.
 
-DB-X is published as a small set of npm packages under the `@db-x` scope.
-
-<InstallTabs pkg="@db-x/postgres-library" />
+:::warning[Not on npm yet]
+The `@db-x/*` packages aren't published to npm yet (tracked in
+[#3](https://github.com/rtorcato/db-x/issues/3)). For now, install by cloning
+the repo and building the workspace — the steps below.
+:::
 
 ## Requirements
 
 - **Node.js 22** or newer.
 - **pnpm**, npm, or yarn — examples use pnpm.
+- **Docker** and **`psql`** on your `PATH` if you want to run a schema against a
+  local database (`db-x apply` shells out to `psql`).
 
-## Packages
-
-```bash
-# The runtime shim (re-exports @infra-x/runtime).
-pnpm add -D @db-x/runtime
-
-# The Postgres component library.
-pnpm add -D @db-x/postgres-library
-```
-
-## CLI status
-
-The dedicated `db-x` CLI is on the [roadmap](../about/roadmap.mdx) but not yet
-shipped. Until then, run DB-X schemas through the Infra-X CLI — the schema
-components import from `@db-x/postgres-library` either way:
+## Install (clone + build)
 
 ```bash
-pnpm add -D @infra-x/cli @infra-x/runtime
-pnpm infra-x preview ./infra.tsx
+git clone https://github.com/rtorcato/db-x.git
+cd db-x
+pnpm install && pnpm build
 ```
 
-See [Quickstart (Docker)](./quickstart-docker.mdx) for an end-to-end walk
-through against a local Postgres container.
+This builds every package, including the `db-x` binary in `@db-x/cli`. Run it
+from an example (`cd examples/postgres && pnpm apply`) or from any workspace
+package that depends on `@db-x/cli`.
+
+Once the packages are published, installing into your own project will be:
+
+```bash
+pnpm add -D @db-x/cli @db-x/runtime @db-x/postgres-library
+```
 
 ## JSX pragma
 
@@ -47,6 +48,6 @@ Every DB-X schema file declares its JSX runtime at the top:
 /** @jsxImportSource @db-x/runtime */
 ```
 
-The `@db-x/runtime` import source is a thin re-export of `@infra-x/runtime`, so
-schema files written under it interoperate with anything that runs on the
-Infra-X graph.
+`@db-x/runtime` is a thin re-export of `@infra-x/runtime`, so a schema written
+under it also composes inside an Infra-X graph — but you don't need Infra-X to
+run DB-X. The `db-x` CLI is standalone.

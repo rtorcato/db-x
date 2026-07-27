@@ -1,5 +1,6 @@
 // `db-x apply <file>` — render JSX, diff, execute, persist.
 
+import path from 'node:path'
 import process from 'node:process'
 import * as p from '@clack/prompts'
 import {
@@ -8,12 +9,16 @@ import {
 	plan as makePlan,
 	readState,
 	renderToGraph,
+	type SnapshotRef,
+	STATE_DIR,
 	writeState,
 } from '@db-x/runtime'
+import { createPgDumpDriver } from '@db-x/snapshot-pg-dump'
 import { type ProgressEvent, executePlan } from '../execute.js'
 import { loadJsxFile } from '../load-jsx.js'
 import { makeInteractiveLogger, makeLogger } from '../logger.js'
 import { filterByPhase, validatePhase } from '../phase-filter.js'
+import { planHasDestructive, resolveSnapshotConnection } from '../snapshot.js'
 import { failNonInteractive, isInteractive, makeSpinner as ttyMakeSpinner } from '../tty.js'
 import { actionColor, c } from '../ui.js'
 import { printPlan } from './preview.js'
@@ -25,6 +30,8 @@ export interface ApplyArgs {
 	phase?: string
 	/** Permit destructive DDL on unprotected resources. Never overrides `protect`. */
 	allowDestructive?: boolean
+	/** Skip the pre-flight snapshot that `apply` takes before destructive DDL. */
+	noSnapshot?: boolean
 }
 
 const makeSpinner = () => ttyMakeSpinner(() => p.spinner())
@@ -98,7 +105,7 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 	process.on('SIGTERM', onSignal)
 
 	const exec = makeSpinner()
-	exec.start('Applying changes')
+	let applying = false
 
 	const onProgress = (e: ProgressEvent): void => {
 		const label = actionColor(e.diff.action.type, e.diff.action.type)
@@ -108,6 +115,33 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 	}
 
 	try {
+		// Snapshot before any destructive DDL so a bad apply is recoverable (#7).
+		// Pinned afterward to the resulting state revision.
+		let snapshotRef: SnapshotRef | null = null
+		if (!args.noSnapshot && planHasDestructive(plan)) {
+			const connection = resolveSnapshotConnection(state)
+			if (!connection) {
+				throw new Error(
+					'Refusing destructive changes without a snapshot: no database connection found in state to snapshot. Re-run with --no-snapshot to proceed without one.'
+				)
+			}
+			const snap = makeSpinner()
+			snap.start('Snapshotting before destructive changes')
+			try {
+				const driver = createPgDumpDriver({
+					connection,
+					storeDir: path.join(args.workDir, STATE_DIR, 'snapshots'),
+				})
+				snapshotRef = await driver.create(state.lastApplied ?? 'initial')
+				snap.stop(c.green(`Snapshot ${c.bold(snapshotRef.id)} captured`))
+			} catch (err) {
+				snap.stop(c.red('Snapshot failed'))
+				throw err
+			}
+		}
+
+		applying = true
+		exec.start('Applying changes')
 		const updated = await executePlan(plan, {
 			workDir: args.workDir,
 			state,
@@ -115,6 +149,7 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 			onProgress,
 			makeLogger: isTTY ? makeInteractiveLogger : makeLogger,
 		})
+		if (snapshotRef) updated.snapshot = snapshotRef.id
 		await writeState(args.workDir, updated)
 		exec.stop(c.green('Apply complete'))
 		p.outro(`${c.green('✔')} ${meaningful.length} change(s) applied.`)
@@ -126,7 +161,7 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 			p.note(urls.join('\n'), 'Access')
 		}
 	} catch (err) {
-		exec.stop(c.red('Apply failed'))
+		if (applying) exec.stop(c.red('Apply failed'))
 		throw err
 	} finally {
 		process.off('SIGINT', onSignal)

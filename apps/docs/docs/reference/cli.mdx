@@ -1,31 +1,38 @@
 ---
 title: CLI reference
-description: The db-x command (planned). Runnable today via infra-x.
+description: The db-x command — commands, flags, and exit codes.
 ---
 
-:::warning[Not yet shipped]
-The dedicated `db-x` binary is on the roadmap. The reference below is the
-contract the CLI will honour. To run a DB-X schema today, use the Infra-X CLI
-against `examples/dbx/postgres/infra.tsx` — see [Quickstart (Docker)](../getting-started/quickstart-docker.mdx).
+:::warning Experimental
+The `db-x` CLI runs today, but DB-X is an early prototype — don't point it at a
+database you care about. The `@db-x/*` packages aren't on npm yet; build from
+source (see [Install](../getting-started/install.mdx)).
 :::
 
 ## Commands
 
+Shipped today:
+
 ```
 db-x preview <file>            Render JSX, diff against state, print the plan
-db-x preview --shadow <file>   Same, plus run the DDL on an ephemeral copy and report
 db-x apply <file>              Render, diff, execute changes, persist state
 db-x destroy <file>            Tear down everything in state (reverse order)
+db-x describe <file>           Emit the full schema + state as JSON
+db-x refresh <file>            Read live drift back into state
 db-x state                     Print the contents of .dbx/state.json
+```
 
-db-x snapshot create [--label "..."]
+On the [roadmap](../about/roadmap.mdx), **not yet implemented**:
+
+```
+db-x preview --shadow <file>   Run the DDL on an ephemeral copy, report locks/timings (v0.2)
+db-x snapshot create [--label "..."]                                            (v0.1)
 db-x snapshot list
 db-x history
 db-x diff <revA> <revB>
 db-x restore [--to <label|id|rev>]
-
-db-x mcp <file>                MCP server: describe / explain / graph / preview / history
-db-x types <file>              Emit TypeScript / Drizzle / sqlc types from the live schema
+db-x mcp <file>                MCP server: describe / explain / graph / preview  (v0.3)
+db-x types <file>              Emit TypeScript / Drizzle / sqlc types            (v0.4)
 ```
 
 ## Flags

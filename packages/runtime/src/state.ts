@@ -20,6 +20,12 @@ export const LOCK_FILE = 'state.lock'
 export interface StateFile {
 	version: number
 	lastApplied?: string
+	/**
+	 * Id of the snapshot captured before this revision's apply, when that apply
+	 * included destructive DDL (see the CLI's auto-snapshot). Pins the resulting
+	 * state revision to the pre-change snapshot it can be rolled back to.
+	 */
+	snapshot?: string
 	resources: Record<string, ResourceState>
 }
 

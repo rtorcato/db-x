@@ -11,5 +11,5 @@
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "**/*.test.ts"],
-  "references": [{ "path": "../runtime" }]
+  "references": [{ "path": "../runtime" }, { "path": "../snapshot-pg-dump" }]
 }

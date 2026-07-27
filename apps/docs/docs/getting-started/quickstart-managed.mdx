@@ -3,15 +3,15 @@ title: Quickstart (managed DB)
 description: Point DB-X at an existing RDS, Cloud SQL, or Supabase URL.
 ---
 
-For an existing managed Postgres, swap the Infra-X `<Service>` parent for the
-DB-X `<DatabaseTarget>` parent. The schema below it is identical to the
-Docker quickstart — only the connection wrapper changes.
+For an existing managed Postgres (RDS, Cloud SQL, Supabase, …), point
+`<DatabaseTarget url={...}>` at its `postgres://` URL. The schema below is
+identical to the [Docker quickstart](./quickstart-docker.mdx) — only the
+connection URL changes.
 
-:::warning[CLI not yet shipped]
-The dedicated `db-x` CLI is on the [roadmap](../about/roadmap.mdx). Until it
-lands, this file is design-only — but the schema syntax below is the contract
-the CLI will honour. The `infra.tsx` flow in [Quickstart (Docker)](./quickstart-docker.mdx)
-runs today.
+:::warning Experimental
+DB-X is an early prototype — don't point it at a database you care about. Build
+the CLI first (see [Install](./install.mdx)); `db-x preview`/`apply`/`destroy`
+run today. Snapshot / restore shown below are on the [roadmap](../about/roadmap.mdx).
 :::
 
 ## Schema file
@@ -53,22 +53,26 @@ The output tells you exactly what DDL `db-x apply` would run against the live
 database — and, once shipped, what Shadow-DB preview reports about lock impact
 and timings.
 
-## Apply with a snapshot first
+## Apply
 
 ```bash
-pnpm db-x snapshot create --label "before todos.priority"
+DATABASE_URL="postgres://user:pass@host:5432/todos_db" \
+  pnpm db-x apply ./dbx.tsx
+```
+
+Runs the DDL against the live database and persists the new state to
+`.dbx/state.json`.
+
+:::note Coming soon
+On the [roadmap](../about/roadmap.mdx) (v0.1), `db-x apply` will take a snapshot
+first so you can roll back in seconds:
+
+```bash
+pnpm db-x snapshot create --label "before todos.priority"   # planned
 pnpm db-x apply ./dbx.tsx
+pnpm db-x restore --to "before todos.priority"              # planned
 ```
-
-`db-x snapshot create` takes a `pg_dump --schema-only` (self-hosted) or invokes
-the managed provider's snapshot API (RDS, Cloud SQL) and pins the snapshot id
-to the new state revision. If anything goes wrong:
-
-```bash
-pnpm db-x restore --to "before todos.priority"
-```
-
-restores the schema in seconds.
+:::
 
 ## Next steps
 

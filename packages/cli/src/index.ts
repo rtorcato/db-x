@@ -38,6 +38,7 @@ export interface ParsedArgs {
 	yes: boolean
 	phase: string | undefined
 	allowDestructive: boolean
+	noSnapshot: boolean
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -46,6 +47,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 	let yes = false
 	let phase: string | undefined
 	let allowDestructive = false
+	let noSnapshot = false
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i] as string // safe: i < args.length
@@ -53,6 +55,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
 			yes = true
 		} else if (arg === '--allow-destructive') {
 			allowDestructive = true
+		} else if (arg === '--no-snapshot') {
+			noSnapshot = true
 		} else if (arg === '-h' || arg === '--help') {
 			positional.unshift('help')
 		} else if (arg === '--json') {
@@ -71,7 +75,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
 	const [cmd, file] = positional
 	const command = isCommand(cmd) ? cmd : null
-	return { command, rawCommand: cmd ?? null, file: file ?? null, yes, phase, allowDestructive }
+	return {
+		command,
+		rawCommand: cmd ?? null,
+		file: file ?? null,
+		yes,
+		phase,
+		allowDestructive,
+		noSnapshot,
+	}
 }
 
 function isCommand(value: string | undefined): value is Command {
@@ -133,6 +145,7 @@ async function main(): Promise<void> {
 				yes: parsed.yes,
 				phase: parsed.phase,
 				allowDestructive: parsed.allowDestructive,
+				noSnapshot: parsed.noSnapshot,
 			})
 			return
 		}
@@ -277,6 +290,7 @@ function printHelp(): void {
 		`  ${c.yellow('--yes')}, ${c.yellow('-y')}            Skip confirmation prompts (for CI)`,
 		`  ${c.yellow('--phase')} ${c.dim('<phase>')}        Run only the named phase (setup, monitoring, backup, teardown)`,
 		`  ${c.yellow('--allow-destructive')}    Permit destructive DDL (DROP, ALTER TYPE) on unprotected resources`,
+		`  ${c.yellow('--no-snapshot')}          Skip the pre-flight snapshot taken before destructive DDL on apply`,
 		'',
 		`${c.bold('Environment')}`,
 		`  ${c.magenta('DEBUG=db-x')}      Enable debug logging`,

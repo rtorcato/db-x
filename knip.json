@@ -1,5 +1,16 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/index.{ts,tsx}"],
-  "project": ["src/**/*.{ts,tsx}"]
+  "ignoreWorkspaces": ["apps/docs"],
+  "ignoreUnresolved": ["^\\.$"],
+  "rules": { "duplicates": "off" },
+  "workspaces": {
+    "packages/*": {
+      "entry": "src/index.{ts,tsx}",
+      "project": "src/**/*.{ts,tsx}"
+    },
+    "examples/dbx/*": {
+      "entry": "dbx.tsx",
+      "project": "**/*.{ts,tsx}"
+    }
+  }
 }

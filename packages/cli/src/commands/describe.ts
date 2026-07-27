@@ -33,7 +33,7 @@ export interface DescribeArgs {
 	workDir: string
 }
 
-export interface DescribeResource {
+interface DescribeResource {
 	id: string
 	kind: string
 	phase: string | null

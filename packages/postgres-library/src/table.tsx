@@ -14,7 +14,7 @@
 //   - Surface destructive changes (DROP COLUMN, TYPE narrowing) with a
 //     `!` marker and a --allow-destructive gate. (issue #2)
 
-import { type AnyElement, type Child, defineComponent } from '@db-x/runtime'
+import { type AnyElement, type Child, type PlanAction, defineComponent } from '@db-x/runtime'
 import { findPostgresParent, requirePostgresParent, runSql } from './exec.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,6 +198,24 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 			ctx.log.warn(`drop failed: ${(err as Error).message}`)
 		}
 	},
+	// Pure diff at plan time so `preview` / `apply` can classify destructive
+	// changes (ALTER TYPE, DROP INDEX/CONSTRAINT) before any SQL runs. Compares
+	// desired columns/indexes against the last-applied outputs.
+	plan: (props, prior): PlanAction => {
+		if (!prior) return { type: 'create' }
+		if (JSON.stringify(props) === JSON.stringify(prior.props)) return { type: 'no-op' }
+		const diff = diffTable(props.name, props.columns, props.indexes, {
+			columns: normalizePriorColumns(prior.outputs.columns),
+			indexes: normalizePriorIndexes(prior.outputs.indexes),
+		})
+		const reason =
+			diff.sql.length > 0
+				? `${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.alterations.length} alter(s), ${diff.droppedIndexes.length} index drop(s)`
+				: 'props changed'
+		return diff.destructive.length > 0
+			? { type: 'update', reason, destructive: diff.destructive }
+			: { type: 'update', reason }
+	},
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,6 +255,22 @@ export interface TableDiff {
 	droppedIndexes: string[]
 	/** SQL statements in apply order. */
 	sql: string[]
+	/**
+	 * The subset of `sql` that is destructive — drops an object or coerces
+	 * existing data (ALTER TYPE, DROP INDEX/CONSTRAINT/COLUMN). Metadata-only
+	 * DROPs (DROP DEFAULT / DROP NOT NULL) are not included.
+	 */
+	destructive: string[]
+}
+
+/** A statement that drops a schema object or can lose/coerce existing data. */
+function isDestructiveSql(sql: string): boolean {
+	return (
+		/ TYPE /.test(sql) ||
+		sql.includes('DROP INDEX') ||
+		sql.includes('DROP CONSTRAINT') ||
+		sql.includes('DROP COLUMN')
+	)
 }
 
 export function diffTable(
@@ -293,6 +327,7 @@ export function diffTable(
 		alterations,
 		droppedIndexes,
 		sql,
+		destructive: sql.filter(isDestructiveSql),
 	}
 }
 

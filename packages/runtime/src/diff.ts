@@ -77,7 +77,13 @@ export function plan(desired: Graph, state: StateFile): Plan {
 		actions.push({
 			id,
 			kind: current.kind,
-			action: { type: 'destroy', reason: 'resource no longer present in JSX' },
+			action: {
+				type: 'destroy',
+				reason: 'resource no longer present in JSX',
+				// Tearing down a managed resource is inherently destructive —
+				// gate it behind --allow-destructive like any other DROP.
+				destructive: [`destroy ${current.kind} "${id}"`],
+			},
 			desired: null,
 			current,
 		})

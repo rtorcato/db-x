@@ -23,12 +23,15 @@ export interface PostgresProps {
 	/** Database name. Defaults to the runtime parent's `database` output. */
 	database?: string
 	/**
-	 * When set, the `db-x` CLI requires `--allow-destructive` for any
-	 * DROP / TYPE-narrowing / REVOKE on a child resource, and takes a
-	 * pre-flight snapshot before applying.
+	 * Hard-lock this database's subtree against destructive DDL. When set,
+	 * `db-x apply` refuses any destructive change (DROP, ALTER TYPE, …) on this
+	 * `<Postgres>` or its children **even with** `--allow-destructive` — you
+	 * must remove `protect` from the JSX to proceed. This is the deliberate,
+	 * in-code guard (Terraform `prevent_destroy` style); `--allow-destructive`
+	 * is the weaker global opt-in for unprotected resources.
 	 *
-	 * v0.0 caveat: the flag is captured and propagated, but the CLI
-	 * enforcement is not wired up yet (see TODO.md / GOALS.md).
+	 * Enforced by the runtime destructive guard (see `findDestructiveViolations`).
+	 * A pre-flight snapshot on protected applies lands with the snapshot driver.
 	 */
 	protect?: boolean
 	/** AI-readable purpose. Surfaced by `db-x describe` / MCP. */

@@ -63,6 +63,18 @@ describe('parseArgs', () => {
 		})
 	})
 
+	describe('--allow-destructive flag', () => {
+		it('defaults to false', () => {
+			expect(parseArgs(argv('apply', './infra.tsx')).allowDestructive).toBe(false)
+		})
+
+		it('is set by --allow-destructive', () => {
+			expect(parseArgs(argv('apply', './infra.tsx', '--allow-destructive')).allowDestructive).toBe(
+				true
+			)
+		})
+	})
+
 	describe('--phase', () => {
 		it('defaults to undefined', () => {
 			expect(parseArgs(argv('apply', './infra.tsx')).phase).toBeUndefined()

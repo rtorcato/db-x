@@ -90,7 +90,7 @@ full PITR + browse UX — is deferred to v1.0+.
 - [ ] CLI: `db-x snapshot create [--with-data] [--label]`,
   `db-x snapshot list`, `db-x snapshot prune`, `db-x restore <id>`.
 - [ ] `db-x history` — list past snapshots with timestamps and a
-  one-line change summary. Read-only view of `.infrax/state.json`
+  one-line change summary. Read-only view of `.dbx/state.json`
   revision history joined with the snapshot manifest.
 - [ ] `db-x diff <revA> <revB>` — show the SQL delta between any two
   snapshots. Reuses the pure `diffTable()` already exported from

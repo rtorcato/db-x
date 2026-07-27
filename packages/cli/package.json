@@ -19,6 +19,7 @@
   "dependencies": {
     "@clack/prompts": "^0.7.0",
     "@db-x/runtime": "workspace:*",
+    "@db-x/snapshot-pg-dump": "workspace:*",
     "picocolors": "^1.0.1",
     "tsx": "^4.19.0"
   },

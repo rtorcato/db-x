@@ -75,6 +75,16 @@ describe('parseArgs', () => {
 		})
 	})
 
+	describe('--no-snapshot flag', () => {
+		it('defaults to false', () => {
+			expect(parseArgs(argv('apply', './infra.tsx')).noSnapshot).toBe(false)
+		})
+
+		it('is set by --no-snapshot', () => {
+			expect(parseArgs(argv('apply', './infra.tsx', '--no-snapshot')).noSnapshot).toBe(true)
+		})
+	})
+
 	describe('--phase', () => {
 		it('defaults to undefined', () => {
 			expect(parseArgs(argv('apply', './infra.tsx')).phase).toBeUndefined()

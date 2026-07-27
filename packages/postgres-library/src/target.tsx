@@ -40,11 +40,15 @@ export const DatabaseTarget = defineComponent<DatabaseTargetProps, DatabaseTarge
 	apply: async (props, ctx) => {
 		const parsed = parseUrl(props.url)
 
-		// The exec record drives `psql -U <user> -d <db> -c <sql>` invocations
-		// from child components. PGHOST/PGPORT/PGPASSWORD are passed via env so
-		// they don't appear in argv or process listings.
+		// The exec record is a wrapper *prefix* that a child appends its tool to
+		// (`[...exec.args, 'psql'|'pg_dump', …]`), mirroring the docker parent's
+		// `docker compose exec -T db <tool>`. For a direct connection there is no
+		// container to exec into, so the wrapper is a pass-through: `env` runs
+		// whatever tool the child appends. Using the tool itself as `command`
+		// would hardcode it — `spawn('psql', ['pg_dump', …])` launches psql, not
+		// pg_dump. PGHOST/PGPORT/PGPASSWORD go via env so they never hit argv.
 		const exec: RuntimeExec = {
-			command: 'psql',
+			command: 'env',
 			args: [],
 			env: {
 				PGHOST: parsed.host,

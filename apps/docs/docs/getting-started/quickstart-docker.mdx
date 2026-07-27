@@ -1,78 +1,93 @@
 ---
 title: Quickstart (Docker)
-description: Run a DB-X schema against a Postgres container managed by Compose.
+description: Run a DB-X schema against a throwaway Postgres container — no Infra-X.
 ---
 
-This walkthrough mirrors the runnable `examples/dbx/postgres/infra.tsx` flow in the repo.
-The schema lives in a single JSX file; `infra-x apply` stands up Postgres
-inside a Compose stack and applies the schema against it.
+Point DB-X at a plain Postgres container and apply a schema. This is pure DB-X —
+a `docker-compose.yml` that runs **only** Postgres, and the `db-x` CLI applying a
+JSX schema against it. No Infra-X, no `<Service>`, no Compose orchestration from
+the runtime.
 
-## 1. Clone the demo
+:::warning Experimental
+DB-X is an early prototype — do **not** point it at a database you care about.
+:::
+
+## Prerequisites
+
+- Docker (for the Postgres container)
+- Node + [pnpm](https://pnpm.io)
+- `psql` on your `PATH` — `db-x apply` shells out to it to run the DDL
+
+## 1. Clone and build
+
+DB-X isn't on npm yet, so the `db-x` binary comes from the workspace build:
 
 ```bash
-git clone https://github.com/rtorcato/infra-x.git
-cd infra-x
-pnpm install
-cd examples/dbx/postgres
-cp .env.example .env  # optional — defaults work out of the box
+git clone https://github.com/rtorcato/db-x.git
+cd db-x
+pnpm install && pnpm build
 ```
 
-## 2. Inspect the schema
+## 2. Start Postgres
 
-`examples/dbx/postgres/infra.tsx` mixes an Infra-X `<Service>` (which boots Postgres in
-Compose) with the DB-X `<Postgres>` / `<Table>` components from
-`@db-x/postgres-library`:
+The standalone example ships a minimal Compose file — just Postgres, matching the
+demo's default credentials (`todos` / `todos` / `todos` on `:5432`):
+
+```bash
+cd examples/postgres
+docker compose up -d --wait   # starts Postgres, waits until it accepts connections
+```
+
+## 3. Inspect the schema
+
+[`examples/postgres/dbx.tsx`](https://github.com/rtorcato/db-x/blob/main/examples/postgres/dbx.tsx)
+is standalone DB-X — it imports only `@db-x/postgres-library` and connects via
+`<DatabaseTarget url=...>`, reading the URL from `.env` (auto-created from
+`.env.example` on first run):
 
 ```tsx
 /** @jsxRuntime automatic */
-/** @jsxImportSource @infra-x/runtime */
+/** @jsxImportSource @db-x/runtime */
 
-import { DockerCompose, Service } from '@infra-x/docker-library';
-import { Column, Postgres, Table } from '@db-x/postgres-library';
+import { Column, DatabaseTarget, Postgres, Table } from '@db-x/postgres-library';
 
-<DockerCompose project="todos-stack">
-  <Service name="db" image="postgres:16-alpine" /* …env… */>
-    <Postgres name="todos-db">
+export default (
+  <DatabaseTarget url={process.env.DATABASE_URL}>
+    <Postgres name="todos-db" user="todos" password="todos" database="todos">
       <Table name="todos">
-        <Column name="id" type="serial" primaryKey />
-        <Column name="title" type="text" notNull />
+        <Column name="id" type="uuid" primaryKey default="gen_random_uuid()" />
+        <Column name="title" type="citext" notNull />
         <Column name="done" type="boolean" notNull default="false" />
       </Table>
     </Postgres>
-  </Service>
-</DockerCompose>;
+  </DatabaseTarget>
+);
 ```
 
-## 3. Preview the plan
+## 4. Preview the plan
 
 ```bash
-pnpm preview:infra
+pnpm preview        # db-x preview ./dbx.tsx
 ```
 
-This renders the JSX, computes the diff against `.dbx/state.json`, and
-prints what would change — without touching Docker or Postgres.
+Renders the JSX, diffs it against `.dbx/state.json`, and prints what would change.
+Preview is **offline** — it does not touch Postgres.
 
-## 4. Apply
+## 5. Apply
 
 ```bash
-pnpm apply:infra
+pnpm apply          # db-x apply ./dbx.tsx
 ```
 
-`infra-x` will:
+Connects to the container, creates the database objects (extensions, tables,
+columns, indexes, seed rows), and persists the new state to `.dbx/state.json`.
 
-1. Start the `db` service via `docker compose up -d`.
-2. Wait for Postgres to accept connections.
-3. Create the database, install extensions, create tables and columns.
-4. Persist the new state to `.dbx/state.json`.
-
-## 5. Tear down
+## 6. Tear down
 
 ```bash
-pnpm destroy:infra
+pnpm destroy                 # drop the schema objects in reverse order
+docker compose down -v       # stop Postgres and wipe its volume
 ```
-
-Reverses everything in the right order: drops tables, then drops the database,
-then stops and removes the Compose stack.
 
 ## Next steps
 

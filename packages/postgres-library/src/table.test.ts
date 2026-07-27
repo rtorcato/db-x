@@ -1,28 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { type ColumnSpec, diffTable } from './table.js'
+import { type ColumnSpec, type IndexSpec, diffTable } from './table.js'
 
-describe('diffTable', () => {
-	const baseCol = (overrides: Partial<ColumnSpec>): ColumnSpec => ({
-		name: 'x',
-		type: 'text',
-		...overrides,
-	})
+const col = (o: Partial<ColumnSpec> & { name: string }): ColumnSpec => ({ type: 'text', ...o })
+const prior = (columns: ColumnSpec[], indexes: IndexSpec[] = []) => ({ columns, indexes })
 
+const idCol = col({ name: 'id', type: 'serial', primaryKey: true })
+
+describe('diffTable — columns & renames', () => {
 	it('returns no statements when columns are unchanged', () => {
-		const next = [baseCol({ name: 'id', type: 'serial', primaryKey: true })]
-		const diff = diffTable('todos', next, ['id'])
+		const diff = diffTable('todos', [idCol], [], prior([idCol]))
 		expect(diff.renames).toEqual([])
 		expect(diff.additions).toEqual([])
+		expect(diff.alterations).toEqual([])
 		expect(diff.sql).toEqual([])
 	})
 
 	it('emits ADD COLUMN for net-new columns', () => {
-		const next = [
-			baseCol({ name: 'id', type: 'serial', primaryKey: true }),
-			baseCol({ name: 'priority', type: 'int', notNull: true, default: '0' }),
-		]
-		const diff = diffTable('todos', next, ['id'])
-		expect(diff.renames).toEqual([])
+		const next = [idCol, col({ name: 'priority', type: 'int', notNull: true, default: '0' })]
+		const diff = diffTable('todos', next, [], prior([idCol]))
 		expect(diff.additions.map((c) => c.name)).toEqual(['priority'])
 		expect(diff.sql).toEqual([
 			'ALTER TABLE "todos" ADD COLUMN IF NOT EXISTS "priority" int NOT NULL DEFAULT 0',
@@ -30,49 +25,162 @@ describe('diffTable', () => {
 	})
 
 	it('emits RENAME COLUMN when `from` points at a prior name', () => {
-		const next = [
-			baseCol({ name: 'id', type: 'serial', primaryKey: true }),
-			baseCol({ name: 'title', from: 'name', type: 'citext', notNull: true }),
-		]
-		const diff = diffTable('todos', next, ['id', 'name'])
+		const next = [idCol, col({ name: 'title', from: 'name', type: 'citext', notNull: true })]
+		const p = prior([idCol, col({ name: 'name', type: 'citext', notNull: true })])
+		const diff = diffTable('todos', next, [], p)
 		expect(diff.renames).toEqual([{ from: 'name', to: 'title' }])
-		expect(diff.additions).toEqual([])
+		expect(diff.alterations).toEqual([])
 		expect(diff.sql).toEqual(['ALTER TABLE "todos" RENAME COLUMN "name" TO "title"'])
 	})
 
 	it('orders RENAME before ADD when both apply', () => {
 		const next = [
-			baseCol({ name: 'id', type: 'serial', primaryKey: true }),
-			baseCol({ name: 'title', from: 'name', type: 'citext', notNull: true }),
-			baseCol({ name: 'priority', type: 'int', notNull: true, default: '0' }),
+			idCol,
+			col({ name: 'title', from: 'name', type: 'citext', notNull: true }),
+			col({ name: 'priority', type: 'int', notNull: true, default: '0' }),
 		]
-		const diff = diffTable('todos', next, ['id', 'name'])
-		expect(diff.renames).toEqual([{ from: 'name', to: 'title' }])
-		expect(diff.additions.map((c) => c.name)).toEqual(['priority'])
+		const p = prior([idCol, col({ name: 'name', type: 'citext', notNull: true })])
+		const diff = diffTable('todos', next, [], p)
 		expect(diff.sql).toEqual([
 			'ALTER TABLE "todos" RENAME COLUMN "name" TO "title"',
 			'ALTER TABLE "todos" ADD COLUMN IF NOT EXISTS "priority" int NOT NULL DEFAULT 0',
 		])
 	})
 
+	it('applies attribute changes to the renamed (new) name', () => {
+		const next = [col({ name: 'title', from: 'name', type: 'citext' })]
+		const p = prior([col({ name: 'name', type: 'text' })])
+		const diff = diffTable('todos', next, [], p)
+		expect(diff.sql).toEqual([
+			'ALTER TABLE "todos" RENAME COLUMN "name" TO "title"',
+			'ALTER TABLE "todos" ALTER COLUMN "title" TYPE citext',
+		])
+	})
+
 	it('ignores `from` when the target name already exists (defensive)', () => {
-		// The new name `title` is already in priorCols, so this isn't a
-		// rename — it's a no-op. We must NOT emit a RENAME that would error.
-		const next = [baseCol({ name: 'title', from: 'name', type: 'citext' })]
-		const diff = diffTable('todos', next, ['title'])
+		const next = [col({ name: 'title', from: 'name', type: 'citext' })]
+		const diff = diffTable('todos', next, [], prior([col({ name: 'title', type: 'citext' })]))
 		expect(diff.renames).toEqual([])
-		expect(diff.additions).toEqual([])
 		expect(diff.sql).toEqual([])
 	})
 
 	it('ignores `from` when the prior column does not exist', () => {
-		// `from='oldname'` but oldname isn't in the prior — there's nothing
-		// to rename. The column with `from` is treated as already-resolved
-		// (no addition, no rename).
-		const next = [baseCol({ name: 'title', from: 'oldname', type: 'citext' })]
-		const diff = diffTable('todos', next, ['id'])
+		const next = [col({ name: 'title', from: 'oldname', type: 'citext' })]
+		const diff = diffTable('todos', next, [], prior([idCol]))
 		expect(diff.renames).toEqual([])
 		expect(diff.additions).toEqual([])
+		expect(diff.sql).toEqual([])
+	})
+})
+
+describe('diffTable — column attribute alterations', () => {
+	it('detects type changes → ALTER COLUMN TYPE', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'amount', type: 'bigint' })],
+			[],
+			prior([col({ name: 'amount', type: 'int' })])
+		)
+		expect(diff.sql).toEqual(['ALTER TABLE "t" ALTER COLUMN "amount" TYPE bigint'])
+	})
+
+	it('detects an added default → SET DEFAULT', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'n', type: 'int', default: '0' })],
+			[],
+			prior([col({ name: 'n', type: 'int' })])
+		)
+		expect(diff.sql).toEqual(['ALTER TABLE "t" ALTER COLUMN "n" SET DEFAULT 0'])
+	})
+
+	it('detects a removed default → DROP DEFAULT', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'n', type: 'int' })],
+			[],
+			prior([col({ name: 'n', type: 'int', default: '0' })])
+		)
+		expect(diff.sql).toEqual(['ALTER TABLE "t" ALTER COLUMN "n" DROP DEFAULT'])
+	})
+
+	it('detects NOT NULL added → SET NOT NULL', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'n', type: 'text', notNull: true })],
+			[],
+			prior([col({ name: 'n', type: 'text' })])
+		)
+		expect(diff.sql).toEqual(['ALTER TABLE "t" ALTER COLUMN "n" SET NOT NULL'])
+	})
+
+	it('detects NOT NULL removed → DROP NOT NULL', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'n', type: 'text' })],
+			[],
+			prior([col({ name: 'n', type: 'text', notNull: true })])
+		)
+		expect(diff.sql).toEqual(['ALTER TABLE "t" ALTER COLUMN "n" DROP NOT NULL'])
+	})
+
+	it('detects UNIQUE added → ADD CONSTRAINT', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'email', type: 'text', unique: true })],
+			[],
+			prior([col({ name: 'email', type: 'text' })])
+		)
+		expect(diff.sql).toEqual(['ALTER TABLE "t" ADD CONSTRAINT "t_email_key" UNIQUE ("email")'])
+	})
+
+	it('detects UNIQUE removed → DROP CONSTRAINT', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'email', type: 'text' })],
+			[],
+			prior([col({ name: 'email', type: 'text', unique: true })])
+		)
+		expect(diff.sql).toEqual(['ALTER TABLE "t" DROP CONSTRAINT IF EXISTS "t_email_key"'])
+	})
+
+	it('skips NOT NULL / UNIQUE diffs on a primary-key column', () => {
+		const next = [col({ name: 'id', type: 'int', primaryKey: true })]
+		const p = prior([col({ name: 'id', type: 'int', notNull: false, unique: false })])
+		expect(diffTable('t', next, [], p).sql).toEqual([])
+	})
+
+	it('suppresses attribute diffs for legacy name-only prior state', () => {
+		// A pre-rich-diff state stored columns as bare names; normalization
+		// gives them the sentinel type. We must not emit a bogus TYPE change.
+		const next = [col({ name: 'n', type: 'text', notNull: true })]
+		const p = prior([{ name: 'n', type: '__db_x_unknown__' }])
+		expect(diffTable('t', next, [], p).sql).toEqual([])
+	})
+})
+
+describe('diffTable — indexes', () => {
+	it('drops indexes present in prior but no longer declared', () => {
+		const idx: IndexSpec = { name: 'idx_old', columns: ['a'] }
+		const diff = diffTable(
+			't',
+			[col({ name: 'a', type: 'int' })],
+			[],
+			prior([col({ name: 'a', type: 'int' })], [idx])
+		)
+		expect(diff.droppedIndexes).toEqual(['idx_old'])
+		expect(diff.sql).toEqual(['DROP INDEX IF EXISTS "idx_old"'])
+	})
+
+	it('keeps an index that is still declared', () => {
+		const idx: IndexSpec = { name: 'idx_a', columns: ['a'] }
+		const diff = diffTable(
+			't',
+			[col({ name: 'a', type: 'int' })],
+			[idx],
+			prior([col({ name: 'a', type: 'int' })], [idx])
+		)
+		expect(diff.droppedIndexes).toEqual([])
 		expect(diff.sql).toEqual([])
 	})
 })

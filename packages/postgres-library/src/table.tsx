@@ -11,10 +11,8 @@
 //     `ALTER TABLE ... RENAME COLUMN` cleanly.
 //
 // TODO (v0.0 follow-up, see GOALS.md):
-//   - Detect type / default / NOT NULL / UNIQUE changes → ALTER COLUMN.
-//   - Detect removed indexes → DROP INDEX IF EXISTS.
 //   - Surface destructive changes (DROP COLUMN, TYPE narrowing) with a
-//     `!` marker and a --allow-destructive gate.
+//     `!` marker and a --allow-destructive gate. (issue #2)
 
 import { type AnyElement, type Child, defineComponent } from '@db-x/runtime'
 import { findPostgresParent, requirePostgresParent, runSql } from './exec.js'
@@ -113,9 +111,27 @@ interface TableResourceProps {
 
 interface TableResourceOutputs {
 	name: string
-	/** Resolved column names *after* any renames, in declaration order. */
-	columns: string[]
+	/** Full column specs *after* any renames, in declaration order. */
+	columns: ColumnSpec[]
+	/** Index specs, so the next diff can detect removed indexes. */
+	indexes: IndexSpec[]
 	[key: string]: unknown
+}
+
+// Sentinel `type` for columns recovered from pre-rich-diff state (name-only).
+// Attribute diffs are suppressed for these — we only know the name.
+// ponytail: tolerate one legacy state shape; drop this once alpha state resets.
+const UNKNOWN_TYPE = '__db_x_unknown__'
+
+function normalizePriorColumns(raw: unknown): ColumnSpec[] {
+	if (!Array.isArray(raw)) return []
+	return raw.map((c) =>
+		typeof c === 'string' ? { name: c, type: UNKNOWN_TYPE } : (c as ColumnSpec)
+	)
+}
+
+function normalizePriorIndexes(raw: unknown): IndexSpec[] {
+	return Array.isArray(raw) ? (raw as IndexSpec[]) : []
 }
 
 const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>({
@@ -139,50 +155,27 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 			ctx.log.info(`Creating table ${props.name}`)
 			await runSql(parent, user, database, createSql, ctx)
 		} else {
-			const priorCols = new Set(prior.outputs.columns)
-
-			// 1. Renames first. A column with `from` whose `from` exists in the
-			//    prior table and whose new `name` does NOT yet exist.
-			const renames = props.columns.filter(
-				(c) =>
-					typeof c.from === 'string' &&
-					c.from.length > 0 &&
-					priorCols.has(c.from) &&
-					!priorCols.has(c.name)
-			)
-
-			// 2. Additions: columns we've never seen before, ignoring those
-			//    that are actually renames.
-			const renamedNewNames = new Set(renames.map((c) => c.name))
-			const additions = props.columns.filter(
-				(c) => !priorCols.has(c.name) && !renamedNewNames.has(c.name) && !c.from
-			)
-
-			const stmts: string[] = []
-			for (const c of renames) {
-				stmts.push(`ALTER TABLE "${props.name}" RENAME COLUMN "${c.from}" TO "${c.name}"`)
-			}
-			for (const c of additions) {
-				stmts.push(`ALTER TABLE "${props.name}" ADD COLUMN IF NOT EXISTS ${columnSql(c)}`)
-			}
-
-			if (stmts.length === 0) {
-				ctx.log.info(`Table ${props.name} unchanged at the column level`)
+			const diff = diffTable(props.name, props.columns, props.indexes, {
+				columns: normalizePriorColumns(prior.outputs.columns),
+				indexes: normalizePriorIndexes(prior.outputs.indexes),
+			})
+			if (diff.sql.length === 0) {
+				ctx.log.info(`Table ${props.name} unchanged`)
 			} else {
 				ctx.log.info(
-					`Table ${props.name}: ${renames.length} rename(s), ${additions.length} addition(s)`
+					`Table ${props.name}: ${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.alterations.length} alter(s), ${diff.droppedIndexes.length} index drop(s)`
 				)
-				await runSql(parent, user, database, stmts.join(';\n'), ctx)
+				await runSql(parent, user, database, diff.sql.join(';\n'), ctx)
 			}
 		}
 
-		// Indexes — always idempotent via IF NOT EXISTS, so safe to re-run.
-		// (DROP for removed indexes is a v0.0 follow-up.)
+		// Index creates — always idempotent via IF NOT EXISTS, so safe to re-run.
+		// (Removed indexes are dropped via diffTable above.)
 		for (const idx of props.indexes) {
 			await runSql(parent, user, database, buildCreateIndex(props.name, idx), ctx)
 		}
 
-		return { name: props.name, columns: props.columns.map((c) => c.name) }
+		return { name: props.name, columns: props.columns, indexes: props.indexes }
 	},
 	destroy: async (state, ctx) => {
 		const parent = findPostgresParent(ctx)
@@ -238,6 +231,10 @@ export function buildCreateIndex(tableName: string, idx: IndexSpec): string {
 export interface TableDiff {
 	renames: Array<{ from: string; to: string }>
 	additions: ColumnSpec[]
+	/** In-place column attribute changes, keyed by the (post-rename) name. */
+	alterations: Array<{ column: string; sql: string[] }>
+	/** Names of indexes present in prior state but no longer declared. */
+	droppedIndexes: string[]
 	/** SQL statements in apply order. */
 	sql: string[]
 }
@@ -245,32 +242,97 @@ export interface TableDiff {
 export function diffTable(
 	tableName: string,
 	next: ColumnSpec[],
-	priorColumnNames: string[]
+	nextIndexes: IndexSpec[],
+	prior: { columns: ColumnSpec[]; indexes: IndexSpec[] }
 ): TableDiff {
-	const priorCols = new Set(priorColumnNames)
+	const priorByName = new Map(prior.columns.map((c) => [c.name, c]))
+
+	// 1. Renames: a column with `from` whose `from` exists in the prior table
+	//    and whose new `name` does NOT yet exist.
 	const renames = next.filter(
 		(c) =>
 			typeof c.from === 'string' &&
 			c.from.length > 0 &&
-			priorCols.has(c.from) &&
-			!priorCols.has(c.name)
+			priorByName.has(c.from) &&
+			!priorByName.has(c.name)
 	)
+	const renameFrom = new Map(renames.map((c) => [c.name, c.from as string]))
 	const renamedNewNames = new Set(renames.map((c) => c.name))
+
+	// 2. Additions: columns we've never seen before, excluding renames.
 	const additions = next.filter(
-		(c) => !priorCols.has(c.name) && !renamedNewNames.has(c.name) && !c.from
+		(c) => !priorByName.has(c.name) && !renamedNewNames.has(c.name) && !c.from
 	)
-	const sql: string[] = []
-	for (const c of renames) {
-		sql.push(`ALTER TABLE "${tableName}" RENAME COLUMN "${c.from}" TO "${c.name}"`)
+
+	// 3. Alterations: columns that map to a prior column (same name or via a
+	//    rename) whose attributes changed.
+	const alterations: Array<{ column: string; sql: string[] }> = []
+	for (const c of next) {
+		const priorSpec = renameFrom.has(c.name)
+			? priorByName.get(renameFrom.get(c.name) as string)
+			: priorByName.get(c.name)
+		if (!priorSpec) continue
+		const stmts = alterColumnSql(tableName, c, priorSpec)
+		if (stmts.length > 0) alterations.push({ column: c.name, sql: stmts })
 	}
-	for (const c of additions) {
-		sql.push(`ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS ${columnSql(c)}`)
-	}
+
+	// 4. Removed indexes.
+	const nextIndexNames = new Set(nextIndexes.map((i) => i.name))
+	const droppedIndexes = prior.indexes.filter((i) => !nextIndexNames.has(i.name)).map((i) => i.name)
+
+	const sql: string[] = [
+		...renames.map((c) => `ALTER TABLE "${tableName}" RENAME COLUMN "${c.from}" TO "${c.name}"`),
+		...additions.map((c) => `ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS ${columnSql(c)}`),
+		...alterations.flatMap((a) => a.sql),
+		...droppedIndexes.map((n) => `DROP INDEX IF EXISTS "${n}"`),
+	]
+
 	return {
 		renames: renames.map((c) => ({ from: c.from as string, to: c.name })),
 		additions,
+		alterations,
+		droppedIndexes,
 		sql,
 	}
+}
+
+/**
+ * ALTER statements for a single column whose attributes drifted from `prior`.
+ * PRIMARY KEY columns skip NOT NULL / UNIQUE diffs — the PK constraint already
+ * implies both. Legacy (name-only) prior specs suppress all attribute diffs.
+ */
+function alterColumnSql(tableName: string, next: ColumnSpec, prior: ColumnSpec): string[] {
+	if (prior.type === UNKNOWN_TYPE) return []
+	const t = `ALTER TABLE "${tableName}"`
+	const col = `"${next.name}"`
+	const stmts: string[] = []
+
+	if (next.type !== prior.type) stmts.push(`${t} ALTER COLUMN ${col} TYPE ${next.type}`)
+
+	if ((next.default ?? undefined) !== (prior.default ?? undefined)) {
+		stmts.push(
+			next.default !== undefined
+				? `${t} ALTER COLUMN ${col} SET DEFAULT ${next.default}`
+				: `${t} ALTER COLUMN ${col} DROP DEFAULT`
+		)
+	}
+
+	const pk = next.primaryKey || prior.primaryKey
+	if (!pk) {
+		if (!!next.notNull !== !!prior.notNull) {
+			stmts.push(`${t} ALTER COLUMN ${col} ${next.notNull ? 'SET' : 'DROP'} NOT NULL`)
+		}
+		if (!!next.unique !== !!prior.unique) {
+			const cons = `"${tableName}_${next.name}_key"`
+			stmts.push(
+				next.unique
+					? `${t} ADD CONSTRAINT ${cons} UNIQUE (${col})`
+					: `${t} DROP CONSTRAINT IF EXISTS ${cons}`
+			)
+		}
+	}
+
+	return stmts
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -64,7 +64,7 @@ maintenance window.
 
 ## Example
 
-See [`examples/dbx/postgres/dbx.tsx`](../../examples/dbx/postgres/dbx.tsx).
+See [`examples/postgres/dbx.tsx`](../../examples/postgres/dbx.tsx).
 
 ## Status
 

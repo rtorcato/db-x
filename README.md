@@ -54,7 +54,7 @@ pnpm check       # biome lint + format check
 Try the example after building:
 
 ```bash
-cd examples/dbx/postgres
+cd examples/postgres
 db-x preview ./dbx.tsx
 ```
 
@@ -65,7 +65,7 @@ packages/runtime            @db-x/runtime            engine
 packages/cli                @db-x/cli                db-x binary
 packages/postgres-library   @db-x/postgres-library   schema components
 apps/docs                   Docusaurus site (db-x.dev)
-examples/dbx/postgres       runnable demo schema
+examples/postgres       runnable demo schema
 docs/                       GOALS.md, TODO.md (planning)
 ```
 

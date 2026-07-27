@@ -1,0 +1,23 @@
+# Plain Postgres for the DB-X standalone demo — no Infra-X involved.
+# `db-x apply ./dbx.tsx` points at this via DATABASE_URL (defaults in .env.example).
+#
+#   docker compose up -d --wait      # start Postgres, wait until it's ready
+#   pnpm apply                       # db-x applies the schema against it
+#   docker compose down -v           # stop and wipe the volume
+#
+# Credentials match .env.example (todos / todos / todos on :5432). Override
+# there if you change them.
+services:
+  postgres:
+    image: postgres:16-alpine # includes contrib: pgcrypto + citext used by dbx.tsx
+    environment:
+      POSTGRES_USER: todos
+      POSTGRES_PASSWORD: todos
+      POSTGRES_DB: todos
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todos -d todos"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

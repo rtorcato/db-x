@@ -27,13 +27,17 @@ Build the workspace first (the `db-x` binary lives in `@db-x/cli`):
 ```sh
 pnpm install && pnpm build      # from the repo root
 cd examples/postgres
+docker compose up -d --wait     # start a plain Postgres (see docker-compose.yml)
 pnpm preview                    # render JSX, diff against state, print the plan
 pnpm apply                      # execute the DDL, persist state to .dbx/
 pnpm destroy                    # tear it down in reverse order
+docker compose down -v          # stop Postgres and wipe its volume
 ```
 
 `preview` renders and diffs offline — it does **not** connect to a database.
 `apply` shells out to `psql`, so it needs a reachable Postgres and `psql` on PATH.
+The bundled [`docker-compose.yml`](./docker-compose.yml) provides one with no
+Infra-X involved; or point `DATABASE_URL` at any existing Postgres instead.
 
 ## Configuration
 

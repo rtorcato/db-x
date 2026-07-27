@@ -19,11 +19,15 @@ jobs:
     steps:
       - name: Check for skip CI
         id: skip-check
+        # Pass the commit message via env, never inline `${{ }}` in the script —
+        # otherwise backticks / $() / newlines in a commit message run as shell.
+        env:
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          if [[ "${{ github.event.head_commit.message }}" =~ \[(ci skip|skip ci)\] ]]; then
-            echo "should-skip=true" >> $GITHUB_OUTPUT
+          if [[ "$HEAD_COMMIT_MSG" =~ \[(ci skip|skip ci)\] ]]; then
+            echo "should-skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "should-skip=false" >> $GITHUB_OUTPUT
+            echo "should-skip=false" >> "$GITHUB_OUTPUT"
           fi
 
   dependencies:

@@ -5,29 +5,28 @@ description: A runnable DB-X demo that applies the same Postgres schema two ways
 
 # Examples
 
-The canonical DB-X example is [`examples/dbx/postgres`](https://github.com/rtorcato/infra-x/tree/main/examples/dbx/postgres)
-in the monorepo — a runnable project that applies the **same** Postgres schema
-two ways.
+The canonical DB-X example is [`examples/postgres`](https://github.com/rtorcato/db-x/tree/main/examples/postgres)
+in the repo — a runnable project that applies a `todos` schema to Postgres with
+the standalone `db-x` CLI.
 
 :::warning Experimental
 DB-X is an early prototype. Do not point it at a database you care about.
 :::
 
-## `examples/dbx/postgres` — one schema, two runtimes
+## `examples/postgres` — standalone DB-X
 
-The schema (a `todos` table) is imported from `@db-x/postgres-library`. Two
-entry files apply it through different runtime parents:
+The schema (a `todos` table) is imported from `@db-x/postgres-library` and
+connected via `<DatabaseTarget url={...}>`, so `db-x` runs it against any
+Postgres — no Infra-X involved:
 
 | File | Runtime parent | CLI | Use case |
 | --- | --- | --- | --- |
-| [`dbx.tsx`](https://github.com/rtorcato/infra-x/tree/main/examples/dbx/postgres/dbx.tsx) | `<DatabaseTarget url={...}>` | `db-x` | Production — points at an existing managed DB via a `postgres://` URL. |
-| [`infra.tsx`](https://github.com/rtorcato/infra-x/tree/main/examples/dbx/postgres/infra.tsx) | `<Service image="postgres:16-alpine">` | `infra-x` | Local dev / CI — stands the DB up via Compose, then runs the schema against it. |
+| [`dbx.tsx`](https://github.com/rtorcato/db-x/tree/main/examples/postgres/dbx.tsx) | `<DatabaseTarget url={...}>` | `db-x` | Points at any Postgres via a `postgres://` URL — a local container or a managed DB. |
 
-Only the runtime parent differs — that's what proves DB-X composes with the
-broader Infra-X stack without forking the runtime. The `infra.tsx` flow is
-runnable today via the Infra-X CLI; the `dbx.tsx` flow is design-only until the
-standalone `db-x` CLI lands.
+The bundled [`docker-compose.yml`](https://github.com/rtorcato/db-x/tree/main/examples/postgres/docker-compose.yml)
+provides a throwaway Postgres to apply against; or set `DATABASE_URL` to an
+existing one.
 
 Follow the [Quickstart (Docker)](./getting-started/quickstart-docker.mdx) to run
-`infra.tsx` against a local Postgres, then read [Time Machine](./concepts/time-machine.mdx)
-for snapshots and rollback.
+it against a local Postgres, then read [Time Machine](./concepts/time-machine.mdx)
+for snapshots and rollback (on the roadmap).

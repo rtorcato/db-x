@@ -2,7 +2,14 @@
 
 import process from 'node:process'
 import * as p from '@clack/prompts'
-import { acquireLock, plan as makePlan, readState, renderToGraph, writeState } from '@db-x/runtime'
+import {
+	acquireLock,
+	findDestructiveViolations,
+	plan as makePlan,
+	readState,
+	renderToGraph,
+	writeState,
+} from '@db-x/runtime'
 import { type ProgressEvent, executePlan } from '../execute.js'
 import { loadJsxFile } from '../load-jsx.js'
 import { makeInteractiveLogger, makeLogger } from '../logger.js'
@@ -16,6 +23,8 @@ export interface ApplyArgs {
 	workDir: string
 	yes?: boolean
 	phase?: string
+	/** Permit destructive DDL on unprotected resources. Never overrides `protect`. */
+	allowDestructive?: boolean
 }
 
 const makeSpinner = () => ttyMakeSpinner(() => p.spinner())
@@ -44,6 +53,26 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 	if (meaningful.length === 0) {
 		p.outro(c.dim('Nothing to do.'))
 		return
+	}
+
+	// Destructive guard — refuse before touching the database or the lock.
+	const violations = findDestructiveViolations(plan, graph, state, {
+		allowDestructive: args.allowDestructive ?? false,
+	})
+	if (violations.length > 0) {
+		const lines = violations.flatMap((v) => v.changes.map((ch) => `  ${v.id}: ${ch}`))
+		p.note(lines.join('\n'), c.red('! destructive'))
+		const protectedCount = violations.filter((v) => v.reason === 'protected').length
+		const hints: string[] = []
+		if (protectedCount > 0) {
+			hints.push(
+				`${protectedCount} under a protect-ed <Postgres> — remove \`protect\` in the JSX to allow`
+			)
+		}
+		if (violations.some((v) => v.reason === 'needs-allow-destructive')) {
+			hints.push('re-run with --allow-destructive to permit the rest')
+		}
+		throw new Error(`Refusing ${violations.length} destructive change(s): ${hints.join('; ')}.`)
 	}
 
 	if (!args.yes) {

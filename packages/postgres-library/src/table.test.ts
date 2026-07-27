@@ -184,3 +184,61 @@ describe('diffTable — indexes', () => {
 		expect(diff.sql).toEqual([])
 	})
 })
+
+describe('diffTable — destructive classification', () => {
+	it('flags a type change as destructive', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'n', type: 'bigint' })],
+			[],
+			prior([col({ name: 'n', type: 'int' })])
+		)
+		expect(diff.destructive).toEqual(['ALTER TABLE "t" ALTER COLUMN "n" TYPE bigint'])
+	})
+
+	it('flags a dropped index as destructive', () => {
+		const idx: IndexSpec = { name: 'idx_old', columns: ['a'] }
+		const diff = diffTable(
+			't',
+			[col({ name: 'a', type: 'int' })],
+			[],
+			prior([col({ name: 'a', type: 'int' })], [idx])
+		)
+		expect(diff.destructive).toEqual(['DROP INDEX IF EXISTS "idx_old"'])
+	})
+
+	it('flags a dropped UNIQUE constraint as destructive', () => {
+		const diff = diffTable(
+			't',
+			[col({ name: 'e', type: 'text' })],
+			[],
+			prior([col({ name: 'e', type: 'text', unique: true })])
+		)
+		expect(diff.destructive).toEqual(['ALTER TABLE "t" DROP CONSTRAINT IF EXISTS "t_e_key"'])
+	})
+
+	it('does NOT flag renames, additions, SET DEFAULT, DROP DEFAULT, or NOT NULL toggles', () => {
+		const next = [
+			col({ name: 'id', type: 'serial', primaryKey: true }),
+			col({ name: 'title', from: 'name', type: 'text' }), // rename
+			col({ name: 'added', type: 'int', default: '0' }), // add
+			col({ name: 'd', type: 'int' }), // DROP DEFAULT
+			col({ name: 'nn', type: 'text', notNull: true }), // SET NOT NULL
+			col({ name: 'un', type: 'text', unique: true }), // ADD UNIQUE
+		]
+		const diff = diffTable(
+			't',
+			next,
+			[],
+			prior([
+				col({ name: 'id', type: 'serial', primaryKey: true }),
+				col({ name: 'name', type: 'text' }),
+				col({ name: 'd', type: 'int', default: '0' }),
+				col({ name: 'nn', type: 'text' }),
+				col({ name: 'un', type: 'text' }),
+			])
+		)
+		expect(diff.sql.length).toBeGreaterThan(0)
+		expect(diff.destructive).toEqual([])
+	})
+})

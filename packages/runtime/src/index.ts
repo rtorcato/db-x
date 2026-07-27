@@ -20,6 +20,13 @@ export { renderToGraph } from './reconciler.js'
 export { plan, reverseForDestroy } from './diff.js'
 export type { Plan, ResourceDiff } from './diff.js'
 
+export { findDestructiveViolations, isProtected } from './guard.js'
+export type {
+	DestructiveBlockReason,
+	DestructiveGuardOptions,
+	DestructiveViolation,
+} from './guard.js'
+
 export {
 	acquireLock,
 	emptyState,

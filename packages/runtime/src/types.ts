@@ -98,12 +98,20 @@ export interface RuntimeExec {
 	cwd?: string
 }
 
-/** The action the diff engine plans to take for a single resource. */
+/**
+ * The action the diff engine plans to take for a single resource.
+ *
+ * `destructive`, when present and non-empty, lists the human-readable
+ * destructive changes this action entails (e.g. `DROP INDEX "idx_old"`,
+ * `ALTER COLUMN "amount" TYPE ...`). The CLI marks these in `preview` and
+ * refuses to `apply` them without `--allow-destructive` — or unconditionally
+ * when the resource is under a `protect`-ed ancestor.
+ */
 export type PlanAction =
 	| { type: 'create' }
-	| { type: 'update'; reason: string }
-	| { type: 'replace'; reason: string }
-	| { type: 'destroy'; reason: string }
+	| { type: 'update'; reason: string; destructive?: string[] }
+	| { type: 'replace'; reason: string; destructive?: string[] }
+	| { type: 'destroy'; reason: string; destructive?: string[] }
 	| { type: 'no-op' }
 
 /** Minimal validator interface. Compatible with zod, valibot, custom validators. */

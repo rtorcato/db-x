@@ -1,9 +1,20 @@
 // `db-x preview <file>` — render JSX, diff against state, print the plan.
 
 import * as p from '@clack/prompts'
-import { type Plan, plan as makePlan, readState, renderToGraph } from '@db-x/runtime'
+import {
+	type Plan,
+	type PlanAction,
+	plan as makePlan,
+	readState,
+	renderToGraph,
+} from '@db-x/runtime'
 import { loadJsxFile } from '../load-jsx.js'
 import { actionColor, actionLabel, actionSymbol, c, pad } from '../ui.js'
+
+/** Destructive changes an action entails, if any. */
+function actionDestructive(action: PlanAction): string[] {
+	return 'destructive' in action ? (action.destructive ?? []) : []
+}
 
 export interface PreviewArgs {
 	file: string
@@ -43,7 +54,9 @@ export function printPlan(plan: Plan): void {
 
 	const lines = plan.actions.map((a) => {
 		const phase = a.desired?.phase ?? a.current?.phase ?? '-'
-		const sym = actionSymbol(a.action.type)
+		const destructive = actionDestructive(a.action)
+		// `!` in red flags a destructive action; otherwise the action's own symbol.
+		const sym = destructive.length > 0 ? c.red('!') : actionSymbol(a.action.type)
 		const label = actionLabel(a.action.type)
 		const reason = 'reason' in a.action ? c.dim(` // ${a.action.reason}`) : ''
 		const id = actionColor(a.action.type, pad(a.id, 28))
@@ -53,4 +66,14 @@ export function printPlan(plan: Plan): void {
 	})
 
 	p.note(lines.join('\n'), c.bold('Resources'))
+
+	const destructive = plan.actions.flatMap((a) =>
+		actionDestructive(a.action).map((ch) => `  ${a.id}: ${ch}`)
+	)
+	if (destructive.length > 0) {
+		p.note(destructive.join('\n'), c.red('! destructive'))
+		p.log.warn(
+			`${c.red('Destructive changes')} — ${c.bold('apply')} needs ${c.yellow('--allow-destructive')}, and none may be under a ${c.bold('protect')}-ed <Postgres>.`
+		)
+	}
 }

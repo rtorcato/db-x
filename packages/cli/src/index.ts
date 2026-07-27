@@ -37,6 +37,7 @@ export interface ParsedArgs {
 	file: string | null
 	yes: boolean
 	phase: string | undefined
+	allowDestructive: boolean
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -44,11 +45,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
 	const positional: string[] = []
 	let yes = false
 	let phase: string | undefined
+	let allowDestructive = false
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i] as string // safe: i < args.length
 		if (arg === '--yes' || arg === '-y') {
 			yes = true
+		} else if (arg === '--allow-destructive') {
+			allowDestructive = true
 		} else if (arg === '-h' || arg === '--help') {
 			positional.unshift('help')
 		} else if (arg === '--json') {
@@ -67,7 +71,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
 	const [cmd, file] = positional
 	const command = isCommand(cmd) ? cmd : null
-	return { command, rawCommand: cmd ?? null, file: file ?? null, yes, phase }
+	return { command, rawCommand: cmd ?? null, file: file ?? null, yes, phase, allowDestructive }
 }
 
 function isCommand(value: string | undefined): value is Command {
@@ -123,7 +127,13 @@ async function main(): Promise<void> {
 		case 'apply': {
 			const file = await resolveFile(parsed.file, workDir, 'apply')
 			if (!file) return
-			await applyCommand({ file, workDir, yes: parsed.yes, phase: parsed.phase })
+			await applyCommand({
+				file,
+				workDir,
+				yes: parsed.yes,
+				phase: parsed.phase,
+				allowDestructive: parsed.allowDestructive,
+			})
 			return
 		}
 		case 'refresh': {
@@ -266,6 +276,7 @@ function printHelp(): void {
 		`${c.bold('Flags')}`,
 		`  ${c.yellow('--yes')}, ${c.yellow('-y')}            Skip confirmation prompts (for CI)`,
 		`  ${c.yellow('--phase')} ${c.dim('<phase>')}        Run only the named phase (setup, monitoring, backup, teardown)`,
+		`  ${c.yellow('--allow-destructive')}    Permit destructive DDL (DROP, ALTER TYPE) on unprotected resources`,
 		'',
 		`${c.bold('Environment')}`,
 		`  ${c.magenta('DEBUG=db-x')}      Enable debug logging`,

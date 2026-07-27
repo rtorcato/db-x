@@ -5,8 +5,8 @@
 //     database without standing one up via docker.
 //   - `description` on every component for AI-readable schema review.
 //   - `from="oldName"` on <Column> for explicit, lossless renames.
-//   - `protect` on <Postgres> (flag captured; CLI enforcement is a v0.1
-//     follow-up — see GOALS.md).
+//   - `protect` on <Postgres> — hard-locks the subtree against destructive
+//     DDL, enforced by the runtime guard (see findDestructiveViolations).
 //
 // Same `defineComponent` contract as DB-X; runtime is shared via
 // @db-x/runtime → @db-x/runtime.

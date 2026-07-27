@@ -8,7 +8,7 @@
       "entry": "src/index.{ts,tsx}",
       "project": "src/**/*.{ts,tsx}"
     },
-    "examples/dbx/*": {
+    "examples/*": {
       "entry": "dbx.tsx",
       "project": "**/*.{ts,tsx}"
     }

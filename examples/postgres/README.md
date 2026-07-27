@@ -26,7 +26,7 @@ Build the workspace first (the `db-x` binary lives in `@db-x/cli`):
 
 ```sh
 pnpm install && pnpm build      # from the repo root
-cd examples/dbx/postgres
+cd examples/postgres
 pnpm preview                    # render JSX, diff against state, print the plan
 pnpm apply                      # execute the DDL, persist state to .dbx/
 pnpm destroy                    # tear it down in reverse order
@@ -40,8 +40,8 @@ pnpm destroy                    # tear it down in reverse order
 Connection settings live in [`.env.example`](./.env.example). `dbx.tsx` has **no
 hardcoded credentials** — it reads everything from env vars, loaded from:
 
-1. `examples/dbx/postgres/.env` — gitignored, your local overrides.
-2. `examples/dbx/postgres/.env.example` — committed demo defaults.
+1. `examples/postgres/.env` — gitignored, your local overrides.
+2. `examples/postgres/.env.example` — committed demo defaults.
 
 `.env` overrides `.env.example` when present. To customize, `cp .env.example .env`
 and edit.

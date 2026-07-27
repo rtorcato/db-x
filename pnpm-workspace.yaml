@@ -1,6 +1,6 @@
 packages:
   - 'packages/*'
-  - 'examples/dbx/*'
+  - 'examples/*'
   - 'apps/*'
 allowBuilds:
   core-js: false

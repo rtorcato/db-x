@@ -91,14 +91,14 @@ importers:
         specifier: ~5.6.3
         version: 5.6.3
 
-  examples/dbx/postgres:
+  examples/postgres:
     dependencies:
       '@db-x/postgres-library':
         specifier: workspace:*
-        version: link:../../../packages/postgres-library
+        version: link:../../packages/postgres-library
       '@db-x/runtime':
         specifier: workspace:*
-        version: link:../../../packages/runtime
+        version: link:../../packages/runtime
       '@rtorcato/js-common':
         specifier: ^2.0.1
         version: 2.8.2(@types/node@26.1.1)
@@ -108,7 +108,7 @@ importers:
     devDependencies:
       '@db-x/cli':
         specifier: workspace:*
-        version: link:../../../packages/cli
+        version: link:../../packages/cli
 
   packages/cli:
     dependencies:

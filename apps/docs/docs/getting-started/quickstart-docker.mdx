@@ -49,7 +49,7 @@ import { Column, Postgres, Table } from '@db-x/postgres-library';
 pnpm preview:infra
 ```
 
-This renders the JSX, computes the diff against `.infrax/state.json`, and
+This renders the JSX, computes the diff against `.dbx/state.json`, and
 prints what would change — without touching Docker or Postgres.
 
 ## 4. Apply
@@ -63,7 +63,7 @@ pnpm apply:infra
 1. Start the `db` service via `docker compose up -d`.
 2. Wait for Postgres to accept connections.
 3. Create the database, install extensions, create tables and columns.
-4. Persist the new state to `.infrax/state.json`.
+4. Persist the new state to `.dbx/state.json`.
 
 ## 5. Tear down
 

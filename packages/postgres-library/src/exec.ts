@@ -48,7 +48,7 @@ export function requireRuntimeParent(ctx: Ctx, tagName: string): RuntimeParentOu
 	return parent
 }
 
-export function findRuntimeParent(ctx: Ctx): RuntimeParentOutputs | null {
+function findRuntimeParent(ctx: Ctx): RuntimeParentOutputs | null {
 	const parentId = ctx.resource.parent
 	if (!parentId) return null
 	const outputs = ctx.deps[parentId] as Partial<RuntimeParentOutputs> | undefined

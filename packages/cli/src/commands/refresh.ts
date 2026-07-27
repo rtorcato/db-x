@@ -27,9 +27,9 @@ export interface RefreshArgs {
 	workDir: string
 }
 
-export type DriftStatus = 'drift' | 'in-sync' | 'skipped' | 'error'
+type DriftStatus = 'drift' | 'in-sync' | 'skipped' | 'error'
 
-export interface DriftEntry {
+interface DriftEntry {
 	id: string
 	kind: string
 	status: DriftStatus

@@ -16,6 +16,7 @@
     "check:fix": "biome check --fix .",
     "test": "pnpm -r test",
     "test:run": "pnpm -r test:run",
+    "coverage": "pnpm -r test:run",
     "knip": "knip",
     "prepare": "husky",
     "verify": "pnpm -r --filter='./packages/*' build && pnpm -r test:run && biome check . && (js-tooling doctor || true)",

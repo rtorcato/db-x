@@ -1,4 +1,5 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
-  "extends": ["@rtorcato/js-tooling/biome"]
+  "extends": ["@rtorcato/js-tooling/biome"],
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true }
 }

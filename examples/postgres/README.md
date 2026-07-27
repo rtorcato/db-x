@@ -3,8 +3,9 @@
 > ⚠️ **Experimental — do NOT use with real data.** Points `db-x` at whatever
 > `DATABASE_URL` you give it. Provided "AS IS", no warranty.
 
-[`dbx.tsx`](./dbx.tsx) declares a `todos` schema and applies it production-direct
-via `<DatabaseTarget url={...}>` against an existing Postgres database.
+The schema lives in [`schema.tsx`](./schema.tsx) as a reusable `TodosSchema`
+component; [`dbx.tsx`](./dbx.tsx) is the entry that wires the connection around
+it via `<DatabaseTarget url={...}>` and applies it against an existing Postgres.
 
 ```tsx
 import { Column, Postgres, Table } from '@db-x/postgres-library';

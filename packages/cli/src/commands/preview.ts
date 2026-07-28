@@ -83,11 +83,12 @@ export function printPlan(plan: Plan): void {
 			return [`${head}${reason}`]
 		}
 
+		// The statement itself is printed undimmed — it is the thing being
+		// reviewed, so it must be the brightest text on the row. Only the
+		// leading marker is dimmed, as chrome.
 		const shown = details.slice(0, MAX_DETAIL_LINES).map((stmt) => {
 			const isDestructive = destructive.includes(stmt)
-			return isDestructive
-				? `      ${c.red('!')} ${c.red(stmt)}`
-				: `      ${c.dim('→')} ${c.dim(stmt)}`
+			return isDestructive ? `      ${c.red('!')} ${c.red(stmt)}` : `      ${c.dim('→')} ${stmt}`
 		})
 		const hidden = details.length - shown.length
 		if (hidden > 0) {

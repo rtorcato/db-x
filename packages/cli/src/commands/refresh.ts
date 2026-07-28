@@ -20,7 +20,7 @@ import {
 } from '@db-x/runtime'
 import { loadJsxFile } from '../load-jsx.js'
 import { makeLogger } from '../logger.js'
-import { c, pad, symbols } from '../ui.js'
+import { block, c, pad, symbols } from '../ui.js'
 
 export interface RefreshArgs {
 	file: string
@@ -208,7 +208,7 @@ function printDrift(entries: DriftEntry[]): void {
 						: c.dim(' in sync')
 		return `  ${sym} ${id} ${kind}${detail}`
 	})
-	p.note(lines.join('\n'), c.bold('Resources'))
+	block('Resources', lines.join('\n'))
 
 	if (drift.length > 0) {
 		p.log.warn(

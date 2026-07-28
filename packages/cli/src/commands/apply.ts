@@ -17,7 +17,7 @@ import { makeInteractiveLogger, makeLogger } from '../logger.js'
 import { filterByPhase, validatePhase } from '../phase-filter.js'
 import { createSnapshotDriver, planHasDestructive, resolveSnapshotTarget } from '../snapshot.js'
 import { failNonInteractive, isInteractive, makeSpinner as ttyMakeSpinner } from '../tty.js'
-import { actionColor, c } from '../ui.js'
+import { actionColor, block, c } from '../ui.js'
 import { printPlan } from './preview.js'
 
 export interface ApplyArgs {
@@ -64,8 +64,8 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 		allowDestructive: args.allowDestructive ?? false,
 	})
 	if (violations.length > 0) {
-		const lines = violations.flatMap((v) => v.changes.map((ch) => `  ${v.id}: ${ch}`))
-		p.note(lines.join('\n'), c.red('! destructive'))
+		const lines = violations.flatMap((v) => v.changes.map((ch) => `  ${v.id}: ${c.red(ch)}`))
+		block(c.red('! destructive'), lines.join('\n'))
 		const protectedCount = violations.filter((v) => v.reason === 'protected').length
 		const hints: string[] = []
 		if (protectedCount > 0) {

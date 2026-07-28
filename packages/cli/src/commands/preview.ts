@@ -9,7 +9,7 @@ import {
 	renderToGraph,
 } from '@db-x/runtime'
 import { loadJsxFile } from '../load-jsx.js'
-import { actionColor, actionLabel, actionSymbol, c, pad } from '../ui.js'
+import { actionColor, actionLabel, actionSymbol, block, c, pad } from '../ui.js'
 
 /** Destructive changes an action entails, if any. */
 function actionDestructive(action: PlanAction): string[] {
@@ -67,7 +67,12 @@ export function printPlan(plan: Plan): void {
 		// `!` in red flags a destructive action; otherwise the action's own symbol.
 		const sym = destructive.length > 0 ? c.red('!') : actionSymbol(a.action.type)
 		const label = actionLabel(a.action.type)
-		const id = actionColor(a.action.type, pad(a.id, 26))
+		// The id is the resource's name, not its status — so it gets bold default
+		// foreground, not the action color. Coloring both the label and the id
+		// made a whole plan read as one wash of yellow; confining color to the
+		// short status word leaves white as the dominant text and the color as
+		// an accent. `no-op` rows stay dim end to end, since nothing happens.
+		const id = a.action.type === 'no-op' ? c.dim(pad(a.id, 26)) : c.bold(pad(a.id, 26))
 		const kind = c.dim(a.kind)
 		// Only show the phase when one is actually in use — `[-]` on every row is
 		// noise for the common single-phase deployment.
@@ -83,11 +88,12 @@ export function printPlan(plan: Plan): void {
 			return [`${head}${reason}`]
 		}
 
+		// The statement itself is printed undimmed — it is the thing being
+		// reviewed, so it must be the brightest text on the row. Only the
+		// leading marker is dimmed, as chrome.
 		const shown = details.slice(0, MAX_DETAIL_LINES).map((stmt) => {
 			const isDestructive = destructive.includes(stmt)
-			return isDestructive
-				? `      ${c.red('!')} ${c.red(stmt)}`
-				: `      ${c.dim('→')} ${c.dim(stmt)}`
+			return isDestructive ? `      ${c.red('!')} ${c.red(stmt)}` : `      ${c.dim('→')} ${stmt}`
 		})
 		const hidden = details.length - shown.length
 		if (hidden > 0) {
@@ -96,13 +102,13 @@ export function printPlan(plan: Plan): void {
 		return [head, ...shown]
 	})
 
-	p.note(lines.join('\n'), c.bold('Resources'))
+	block('Resources', lines.join('\n'))
 
 	const destructive = plan.actions.flatMap((a) =>
-		actionDestructive(a.action).map((ch) => `  ${a.id}: ${ch}`)
+		actionDestructive(a.action).map((ch) => `  ${a.id}: ${c.red(ch)}`)
 	)
 	if (destructive.length > 0) {
-		p.note(destructive.join('\n'), c.red('! destructive'))
+		block(c.red('! destructive'), destructive.join('\n'))
 		p.log.warn(
 			`${c.red('Destructive changes')} — ${c.bold('apply')} needs ${c.yellow('--allow-destructive')}, and none may be under a ${c.bold('protect')}-ed <Postgres>.`
 		)

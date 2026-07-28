@@ -172,8 +172,8 @@ const CollectionResource = defineComponent<CollectionResourceProps, CollectionRe
 				? `${diff.addedIndexes.length} index add(s), ${diff.changedIndexes.length} index change(s), ${diff.droppedIndexes.length} index drop(s)${diff.validatorChanged ? ', validator updated' : ''}`
 				: 'props changed'
 		return diff.destructive.length > 0
-			? { type: 'update', reason, destructive: diff.destructive }
-			: { type: 'update', reason }
+			? { type: 'update', reason, destructive: diff.destructive, details: diff.js }
+			: { type: 'update', reason, details: diff.js }
 	},
 })
 

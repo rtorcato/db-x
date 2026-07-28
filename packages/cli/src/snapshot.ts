@@ -10,6 +10,7 @@ import { STATE_DIR } from '@db-x/runtime'
 import type { Plan, SnapshotDriver, SnapshotRef, StateFile } from '@db-x/runtime'
 import { createMongodumpDriver } from '@db-x/snapshot-mongodump'
 import { createPgDumpDriver } from '@db-x/snapshot-pg-dump'
+import { createSqliteDriver } from '@db-x/snapshot-sqlite'
 
 /** True if any planned action performs a destructive change (DROP, TYPE narrow, …). */
 export function planHasDestructive(plan: Plan): boolean {
@@ -20,7 +21,7 @@ export function planHasDestructive(plan: Plan): boolean {
 }
 
 /** Driver tags a component can publish. Statically mapped — see `createSnapshotDriver`. */
-type SnapshotDriverTag = 'pg-dump' | 'mongodump'
+type SnapshotDriverTag = 'pg-dump' | 'mongodump' | 'sqlite-backup'
 
 /**
  * A snapshot-capable connection found in state, tagged with the driver that
@@ -43,9 +44,14 @@ export interface SnapshotTarget {
  *
  * Fallback: state written before the tag existed. A Postgres-shaped record
  * (`{user, password, database, exec}`) is assumed pg_dump-able, which is what
- * the CLI did unconditionally before #78. Only consulted when no tagged
- * resource exists anywhere in state, so a tagged connection is never mistaken
- * for it.
+ * the CLI did unconditionally before #78; a `{file, exec}` record is SQLite.
+ * Only consulted when no tagged resource exists anywhere in state, so a tagged
+ * connection is never mistaken for one of these.
+ *
+ * This path matters more than "old state files" suggests: a resource that
+ * plans as `no-op` is never re-applied, so its stored outputs keep whatever
+ * shape the version that created them wrote. Adding the tag to a component
+ * does not retroactively tag an already-applied database.
  */
 export function resolveSnapshotTarget(state: StateFile): SnapshotTarget | null {
 	for (const res of Object.values(state.resources)) {
@@ -67,6 +73,9 @@ export function resolveSnapshotTarget(state: StateFile): SnapshotTarget | null {
 		) {
 			return { driver: 'pg-dump', outputs: o, label: describe('pg-dump', o) }
 		}
+		if (o && typeof o.file === 'string' && hasExec(o)) {
+			return { driver: 'sqlite-backup', outputs: o, label: describe('sqlite-backup', o) }
+		}
 	}
 	return null
 }
@@ -77,6 +86,11 @@ export function createSnapshotDriver(target: SnapshotTarget, workDir: string): S
 	const o = target.outputs
 	const exec = o.exec as { command: string; args: string[]; env?: Record<string, string> }
 
+	if (target.driver === 'sqlite-backup') {
+		requireStrings(o, ['file'], 'sqlite-backup')
+		return createSqliteDriver({ connection: { exec, file: o.file as string }, storeDir })
+	}
+
 	if (target.driver === 'mongodump') {
 		requireStrings(o, ['uri', 'database'], 'mongodump')
 		return createMongodumpDriver({
@@ -86,6 +100,9 @@ export function createSnapshotDriver(target: SnapshotTarget, workDir: string): S
 	}
 
 	requireStrings(o, ['user', 'password', 'database'], 'pg-dump')
+	// `<Postgres snapshot>` decides schema-vs-full; absent (or state written
+	// before the prop existed) keeps the original schema-only behavior.
+	const pgMode = o.snapshotMode === 'full' ? 'full' : 'schema'
 	return createPgDumpDriver({
 		connection: {
 			exec,
@@ -94,11 +111,12 @@ export function createSnapshotDriver(target: SnapshotTarget, workDir: string): S
 			database: o.database as string,
 		},
 		storeDir,
+		mode: pgMode,
 	})
 }
 
 function isDriverTag(value: unknown): value is SnapshotDriverTag {
-	return value === 'pg-dump' || value === 'mongodump'
+	return value === 'pg-dump' || value === 'mongodump' || value === 'sqlite-backup'
 }
 
 function hasExec(o: Record<string, unknown>): boolean {
@@ -107,6 +125,7 @@ function hasExec(o: Record<string, unknown>): boolean {
 }
 
 function describe(driver: SnapshotDriverTag, o: Record<string, unknown>): string {
+	if (driver === 'sqlite-backup') return String(o.file)
 	const db = typeof o.database === 'string' ? o.database : '(unknown)'
 	return driver === 'mongodump' ? db : `${db} as ${String(o.user)}`
 }

@@ -184,8 +184,8 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 				? `${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.droppedIndexes.length} index drop(s)`
 				: 'props changed'
 		return diff.destructive.length > 0
-			? { type: 'update', reason, destructive: diff.destructive }
-			: { type: 'update', reason }
+			? { type: 'update', reason, destructive: diff.destructive, details: diff.sql }
+			: { type: 'update', reason, details: diff.sql }
 	},
 })
 
@@ -229,6 +229,11 @@ export function buildCreateTable(props: { name: string; columns: ColumnSpec[] })
 }
 
 export function columnSql(c: ColumnSpec): string {
+	if (c.default !== undefined && c.default.trim() === '') {
+		throw new Error(
+			`<Column name="${c.name}" default="">: an empty default is not valid SQL. Use default="''" for an empty string, or omit the prop for no default.`
+		)
+	}
 	const isSerialPk = c.type.toLowerCase() === 'serial' && c.primaryKey
 	const parts = [`"${c.name}"`]
 	if (isSerialPk) {

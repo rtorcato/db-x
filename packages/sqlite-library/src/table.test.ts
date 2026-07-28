@@ -165,3 +165,20 @@ describe('diffTable — unsupported ALTER COLUMN throws', () => {
 		expect(diffTable('t', next, [], p).sql).toEqual([])
 	})
 })
+
+describe('columnSql — empty default', () => {
+	it('rejects default="" instead of emitting invalid SQL', () => {
+		// SQLite produced `DEFAULT ()` and Postgres `DEFAULT ` with nothing
+		// after it — both syntax errors, surfaced only at apply time.
+		expect(() => columnSql(col({ name: 'desc', type: 'text', default: '' }))).toThrow(
+			/empty default is not valid SQL/
+		)
+		expect(() => columnSql(col({ name: 'desc', type: 'text', default: '   ' }))).toThrow(
+			/empty default is not valid SQL/
+		)
+	})
+
+	it('accepts an explicit empty string literal', () => {
+		expect(columnSql(col({ name: 'desc', type: 'text', default: "''" }))).toContain("DEFAULT ''")
+	})
+})

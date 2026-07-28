@@ -20,6 +20,12 @@ export interface SqliteParentOutputs {
 	file: string
 	/** Spawn template forwarded from the runtime parent. */
 	exec: RuntimeExec
+	/**
+	 * Which `SnapshotDriver` can capture this database (#78). Without it the CLI
+	 * finds nothing to snapshot, and a destructive change is refused outright
+	 * rather than being recoverable.
+	 */
+	snapshotDriver?: 'sqlite-backup'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

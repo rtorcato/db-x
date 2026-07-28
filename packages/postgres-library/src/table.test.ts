@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type ColumnSpec, type IndexSpec, diffTable } from './table.js'
+import { type ColumnSpec, type IndexSpec, columnSql, diffTable } from './table.js'
 
 const col = (o: Partial<ColumnSpec> & { name: string }): ColumnSpec => ({ type: 'text', ...o })
 const prior = (columns: ColumnSpec[], indexes: IndexSpec[] = []) => ({ columns, indexes })
@@ -240,5 +240,22 @@ describe('diffTable — destructive classification', () => {
 		)
 		expect(diff.sql.length).toBeGreaterThan(0)
 		expect(diff.destructive).toEqual([])
+	})
+})
+
+describe('columnSql — empty default', () => {
+	it('rejects default="" instead of emitting invalid SQL', () => {
+		// SQLite produced `DEFAULT ()` and Postgres `DEFAULT ` with nothing
+		// after it — both syntax errors, surfaced only at apply time.
+		expect(() => columnSql(col({ name: 'desc', type: 'text', default: '' }))).toThrow(
+			/empty default is not valid SQL/
+		)
+		expect(() => columnSql(col({ name: 'desc', type: 'text', default: '   ' }))).toThrow(
+			/empty default is not valid SQL/
+		)
+	})
+
+	it('accepts an explicit empty string literal', () => {
+		expect(columnSql(col({ name: 'desc', type: 'text', default: "''" }))).toContain("DEFAULT ''")
 	})
 })

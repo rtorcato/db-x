@@ -7,6 +7,7 @@
     { "path": "./packages/mongodb-library" },
     { "path": "./packages/snapshot-pg-dump" },
     { "path": "./packages/snapshot-mongodump" },
+    { "path": "./packages/snapshot-sqlite" },
     { "path": "./packages/sqlite-library" }
   ]
 }

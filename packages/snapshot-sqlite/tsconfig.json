@@ -10,6 +10,6 @@
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts"],
-  "references": [{ "path": "../runtime" }, { "path": "../snapshot-pg-dump" }, { "path": "../snapshot-mongodump" }, { "path": "../snapshot-sqlite" }]
+  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.test.tsx"],
+  "references": [{ "path": "../runtime" }]
 }

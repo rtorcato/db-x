@@ -27,6 +27,8 @@ export interface PostgresParentOutputs {
 	 * legacy shape match.
 	 */
 	snapshotDriver?: 'pg-dump'
+	/** What that driver captures — from `<Postgres snapshot>`. Defaults to `schema`. */
+	snapshotMode?: 'schema' | 'full'
 }
 
 /**

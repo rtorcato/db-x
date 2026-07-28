@@ -20,7 +20,7 @@ export function planHasDestructive(plan: Plan): boolean {
 }
 
 /** Driver tags a component can publish. Statically mapped — see `createSnapshotDriver`. */
-export type SnapshotDriverTag = 'pg-dump' | 'mongodump'
+type SnapshotDriverTag = 'pg-dump' | 'mongodump'
 
 /**
  * A snapshot-capable connection found in state, tagged with the driver that

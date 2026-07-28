@@ -1,0 +1,24 @@
+# Local single-node CockroachDB for the DB-X standalone demo — no Infra-X involved.
+# `db-x apply ./dbx.tsx` points at this via DATABASE_URL (defaults in .env.example).
+#
+#   docker compose up -d --wait      # start CockroachDB, wait until it's ready
+#   pnpm apply                       # db-x applies the schema against it
+#   docker compose down -v           # stop and wipe the volume
+#
+# Insecure single-node: `root` has no password (the .env.example password is a
+# dummy the server ignores). SQL is on :26257; the DB Console is on :8080.
+# COCKROACH_DATABASE auto-creates the `todos` database on first init.
+services:
+  cockroachdb:
+    image: cockroachdb/cockroach:latest
+    command: start-single-node --insecure
+    environment:
+      COCKROACH_DATABASE: todos
+    ports:
+      - "26257:26257" # SQL (pg wire protocol)
+      - "8080:8080"   # DB Console (http://localhost:8080)
+    healthcheck:
+      test: ["CMD", "/cockroach/cockroach", "sql", "--insecure", "-e", "SELECT 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 20

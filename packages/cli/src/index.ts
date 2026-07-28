@@ -6,10 +6,9 @@
 //   db-x                  → interactive menu
 //   db-x help             → colored help screen
 
-import { promises as fs } from 'node:fs'
+import { promises as fs, realpathSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { pathToFileURL } from 'node:url'
 import * as p from '@clack/prompts'
 import { applyCommand } from './commands/apply.js'
 import { describeCommand } from './commands/describe.js'
@@ -318,12 +317,34 @@ function printHelp(): void {
 	p.note(lines.join('\n'), c.bold('db-x — JSX as the deployment language'))
 }
 
-// Only run the interactive CLI when this module is the process entrypoint.
-// Importing it (e.g. from tests) must not trigger main().
-const isEntrypoint =
-	process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
+/**
+ * True when this module is the process entrypoint. Importing it (e.g. from
+ * tests) must not trigger `main()`.
+ *
+ * `argv1` has to be resolved through symlinks before comparing. pnpm's
+ * `node_modules/.bin/db-x` shim invokes the CLI through the workspace link
+ * (`…/node_modules/@db-x/cli/dist/index.js`), while `import.meta.filename` is
+ * always the realpath (`…/packages/cli/dist/index.js`). Comparing them raw
+ * made every `pnpm preview` / `pnpm apply` in `examples/` — the commands the
+ * READMEs tell you to run — exit 0 having done absolutely nothing.
+ *
+ * `realpath` is injected so this is testable without a real symlink.
+ */
+export function isEntrypoint(
+	moduleFilename: string,
+	argv1: string | undefined,
+	realpath: (p: string) => string
+): boolean {
+	if (argv1 === undefined) return false
+	try {
+		return moduleFilename === realpath(argv1)
+	} catch {
+		// argv[1] doesn't exist on disk (`node --eval`, an odd embedder): not us.
+		return false
+	}
+}
 
-if (isEntrypoint) {
+if (isEntrypoint(import.meta.filename, process.argv[1], realpathSync)) {
 	main().catch((err: Error) => {
 		p.log.error(`${c.red('Error')}: ${err.message ?? err}`)
 		if (process.env.DEBUG?.includes('db-x') && err.stack) {

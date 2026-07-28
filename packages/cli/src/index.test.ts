@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COMMANDS, parseArgs } from './index.js'
+import { COMMANDS, isEntrypoint, parseArgs } from './index.js'
 
 // parseArgs is the CLI's contract surface. Tests below pin the behavior
 // against the documented forms in index.ts:
@@ -148,5 +148,38 @@ describe('parseArgs', () => {
 			const parsed = parseArgs(argv('apply', '-h'))
 			expect(parsed.command).toBe('help')
 		})
+	})
+})
+
+describe('isEntrypoint', () => {
+	// pnpm's node_modules/.bin/db-x shim invokes the CLI through the workspace
+	// link, so argv[1] is the symlinked path while import.meta.filename is the
+	// realpath. Comparing them raw made `pnpm preview` exit 0 in silence.
+	const REAL = '/repo/packages/cli/dist/index.js'
+	const LINKED = '/repo/examples/sqlite/node_modules/@db-x/cli/dist/index.js'
+	const realpath = (p: string): string => (p === LINKED ? REAL : p)
+
+	it('is true when argv[1] is the module itself', () => {
+		expect(isEntrypoint(REAL, REAL, realpath)).toBe(true)
+	})
+
+	it('is true when argv[1] reaches the module through a symlink', () => {
+		expect(isEntrypoint(REAL, LINKED, realpath)).toBe(true)
+	})
+
+	it('is false when argv[1] is a different module', () => {
+		expect(isEntrypoint(REAL, '/repo/other/bin.js', realpath)).toBe(false)
+	})
+
+	it('is false when there is no argv[1] (imported, not executed)', () => {
+		expect(isEntrypoint(REAL, undefined, realpath)).toBe(false)
+	})
+
+	it('is false when argv[1] cannot be resolved on disk', () => {
+		expect(
+			isEntrypoint(REAL, '/gone', () => {
+				throw new Error('ENOENT')
+			})
+		).toBe(false)
 	})
 })

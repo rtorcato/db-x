@@ -3,6 +3,7 @@
 > **This is the design / vision doc — the *why*, the positioning, and the non-goals.**
 > The *roadmap and tasks* live in [GitHub milestones](https://github.com/rtorcato/db-x/milestones)
 > and issues, not here. Large-scale / sharding design lives in [`large-scale.md`](./large-scale.md).
+> Competitive positioning and the gap-closing roadmap live in [`competition.md`](./competition.md).
 
 ## North star
 

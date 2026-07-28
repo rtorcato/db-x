@@ -1,0 +1,48 @@
+---
+title: DB-X vs the field
+description: How DB-X compares to Atlas, Bytebase, pgroll, Flyway, and Prisma/Drizzle.
+---
+
+:::warning Experimental
+DB-X is `0.1.0-alpha`. **Do not use it with real data yet.** This page is honest
+about what is and isn't built — see [Roadmap](./roadmap.mdx).
+:::
+
+DB-X owns the **operations side** of database schema — applying DDL to a live
+database in CI, safely. Your ORM keeps the application side. See
+[Why DB-X?](./why-db-x.mdx) for that split.
+
+## At a glance
+
+| | DB-X | Atlas | Bytebase | pgroll | Flyway / Liquibase | Prisma / Drizzle Kit |
+|---|---|---|---|---|---|---|
+| Model | Declarative (JSX) | Declarative (HCL/SQL) | Versioned + review | Zero-downtime versioned | Ordered SQL files | ORM-driven |
+| Drift detection | ✅ | ✅ | Partial | — | — | — |
+| Plan / diff before apply | ✅ `preview` | ✅ | ✅ | ✅ | — | Partial |
+| Destructive-change guard | ✅ (`protect`, `--allow-destructive`) | ✅ (lint) | ✅ (review) | ✅ | — | — |
+| Snapshot + restore | ✅ time machine\* | — | — | — | — | — |
+| Zero-downtime DDL | 🚧 planned | Lints for it | — | ✅ core | — | — |
+| AI-reviewable diff | ✅ `describe` / MCP\* | — | — | — | — | — |
+| Rollback command | 🚧 planned\* | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Maturity | Alpha | Mature | Mature | Stable | Very mature | Mature |
+
+<small>\* Snapshot capture ships today; the `restore` command, MCP server, and
+zero-downtime DDL are in progress — see [Roadmap](./roadmap.mdx).</small>
+
+## When to use DB-X
+
+- Your schema-of-truth is code in the repo and you want CI to diff it against the
+  live DB and apply the delta — a safer `drizzle-kit push` for production.
+- You want a structured, AI-reviewable plan of every schema change.
+- You want an automatic snapshot before any destructive change.
+
+## When to reach for something else (today)
+
+- **You need it in production now** → Atlas or Bytebase are mature.
+- **Zero-downtime DDL on a hot table** → pgroll or Reshape (DB-X is building this).
+- **Ordered SQL-file migrations across many environments** → Flyway or Liquibase.
+- **Dev migrations tied to your ORM models** → Prisma Migrate or Drizzle Kit.
+
+The bet: DB-X's ergonomics (JSX), time machine, and AI review, once rollback,
+DB-side locking, and zero-downtime DDL land, make it the best single tool for
+schema ops across dev and prod.

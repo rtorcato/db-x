@@ -40,7 +40,12 @@ const sidebars: SidebarsConfig = {
 		{
 			type: "category",
 			label: "About",
-			items: ["about/why-db-x", "about/north-star", "about/roadmap"],
+			items: [
+				"about/why-db-x",
+				"about/comparison",
+				"about/north-star",
+				"about/roadmap",
+			],
 		},
 		{
 			type: "category",

@@ -1,6 +1,14 @@
 // `<SeedData>` — inline SQL run once at apply time. Re-runs only when
-// the SQL prop changes (the diff sees `~ update`). For idempotent
-// inserts, include `ON CONFLICT DO NOTHING` in the SQL.
+// the SQL prop changes (the diff sees `~ update`), so the SQL must be
+// idempotent — a re-run appends a second copy of every row otherwise.
+//
+// `ON CONFLICT` alone is not enough: it needs a conflict *target* that can
+// actually fire. Against a generated primary key (`serial`, `gen_random_uuid()`)
+// every run mints a fresh key, so nothing ever conflicts and the clause is
+// decoration. Pin the keys in the seed and conflict on them:
+//
+//   INSERT INTO t (id, title) VALUES (1, 'first')
+//   ON CONFLICT(id) DO UPDATE SET title = excluded.title
 //
 // Must be a child of `<Postgres>`. Inherits `user` / `database` from
 // that parent unless overridden.
@@ -10,7 +18,7 @@ import { requirePostgresParent, runSql } from './exec.js'
 
 export interface SeedDataProps {
 	name: string
-	/** Inline SQL — typically INSERT … ON CONFLICT DO NOTHING for idempotency. */
+	/** Inline SQL. Must be idempotent — see the note above on conflict targets. */
 	sql: string
 	user?: string
 	database?: string

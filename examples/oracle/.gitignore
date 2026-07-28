@@ -1,0 +1,10 @@
+# Self-contained ignores for this example — does not rely on the repo-root .gitignore.
+node_modules/
+
+# db-x state dir written by `db-x apply`.
+.dbx/
+.infrax/
+
+# local env overrides (copied from .env.example on first run); keep .env.example tracked.
+.env
+.env.local

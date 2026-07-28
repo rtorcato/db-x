@@ -5,6 +5,9 @@ node_modules/
 .dbx/
 .infrax/
 
+# local Supabase stack scaffolding created by `supabase init` / `supabase start`.
+supabase/
+
 # local env overrides (copied from .env.example on first run); keep .env.example tracked.
 .env
 .env.local

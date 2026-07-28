@@ -38,18 +38,28 @@ Build the workspace first (the `db-x` binary lives in `@db-x/cli`):
 ```sh
 pnpm install && pnpm build      # from the repo root
 cd examples/supabase
-supabase start                  # local Supabase stack (Supabase CLI + Docker)
+
+# Local Supabase stack — needs the Supabase CLI + a running Docker.
+brew install supabase/tap/supabase   # or: https://supabase.com/docs/guides/cli
+supabase init                        # creates ./supabase/config.toml (once)
+supabase start                       # boots Postgres :54322 + auth/API/Studio
+
 pnpm preview                    # render JSX, diff against state, print the plan
 pnpm apply                      # execute the DDL, persist state to .dbx/
 pnpm destroy                    # tear it down in reverse order
-supabase stop                   # stop the local stack
+supabase stop                   # stop the stack (add --no-backup to wipe data)
 ```
 
 `preview` renders and diffs offline — it does **not** connect to a database.
 `apply` shells out to `psql`, so it needs a reachable Postgres and `psql` on
-PATH. `supabase start` provides a local stack with `auth.users` already
-provisioned; or point `DATABASE_URL` at a hosted project's **direct connection**
-string (Project Settings → Database).
+PATH. `supabase start` boots the full stack in Docker; GoTrue provisions the
+`auth` schema and `auth.users` table on startup (which `schema.tsx`'s FK
+references), and exposes Postgres at the `.env.example` defaults
+(`postgres:postgres@127.0.0.1:54322/postgres`). `supabase init` is required
+first — `supabase start` fails without a `supabase/config.toml`. Alternatively,
+skip Supabase locally and point `DATABASE_URL` at a hosted project's **direct
+connection** string (Project Settings → Database — the `:5432` direct one, not
+the `:6543` pooler, which mishandles session-level DDL).
 
 The demo seeds no rows: `todos.user_id` is NOT NULL and references `auth.users`,
 so a row needs a real user. After `apply`, create one and insert:

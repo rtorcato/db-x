@@ -42,6 +42,7 @@ db-x destroy ./schema.tsx    # tear down in reverse order
 | [`@db-x/cli`](./packages/cli) | The `db-x` binary — preview / apply / refresh / destroy / restore / state / describe / help | BSL-1.1 |
 | [`@db-x/postgres-library`](./packages/postgres-library) | Postgres schema components: `<DatabaseTarget>`, `<Postgres>`, `<Table>`, `<Column>`, `<Index>`, `<Extension>`, `<SeedData>`, `<DbUser>` | MIT |
 | [`@db-x/sqlite-library`](./packages/sqlite-library) | SQLite schema components: `<Sqlite>`, `<Table>`, `<Column>`, `<Index>`, `<SeedData>` | MIT |
+| [`@db-x/mongodb-library`](./packages/mongodb-library) | MongoDB schema components: `<Mongo>`, `<Collection>`, `<Index>`, `<SeedData>` — collections, indexes and JSON Schema validators, not DDL | MIT |
 | [`@db-x/snapshot-pg-dump`](./packages/snapshot-pg-dump) | `pg_dump`-based `SnapshotDriver` — pre-flight snapshots for the schema time machine | MIT |
 
 ## Development
@@ -67,9 +68,10 @@ packages/runtime            @db-x/runtime            engine
 packages/cli                @db-x/cli                db-x binary
 packages/postgres-library   @db-x/postgres-library   schema components (Postgres)
 packages/sqlite-library     @db-x/sqlite-library     schema components (SQLite)
+packages/mongodb-library    @db-x/mongodb-library    schema components (MongoDB)
 packages/snapshot-pg-dump   @db-x/snapshot-pg-dump   pg_dump snapshot driver
 apps/docs                   Docusaurus site (db-x.dev)
-examples/                   runnable demo schemas (postgres, sqlite, supabase, cockroachdb)
+examples/                   runnable demo schemas (postgres, sqlite, supabase, cockroachdb, mongodb)
 docs/                       GOALS.md (design), large-scale.md (design note)
 ```
 
@@ -77,4 +79,4 @@ docs/                       GOALS.md (design), large-scale.md (design note)
 
 Two-license split: the engine (`@db-x/runtime`, `@db-x/cli`) is **BSL-1.1**; the
 libraries and snapshot driver (`@db-x/postgres-library`, `@db-x/sqlite-library`,
-`@db-x/snapshot-pg-dump`) are **MIT**. See [`LICENSING.md`](./LICENSING.md).
+`@db-x/mongodb-library`, `@db-x/snapshot-pg-dump`) are **MIT**. See [`LICENSING.md`](./LICENSING.md).

@@ -3,6 +3,7 @@
 // picocolors auto-disables when stdout isn't a TTY (or NO_COLOR is set), so
 // these helpers are safe to use unconditionally.
 
+import * as p from '@clack/prompts'
 import pc from 'picocolors'
 
 /**
@@ -76,6 +77,23 @@ export function actionColor(type: string, text: string): string {
 		default:
 			return text
 	}
+}
+
+/**
+ * A titled block of output.
+ *
+ * Deliberately not `p.note()`. Clack renders every line of a note through
+ * `dim()` (`@clack/prompts@0.7.0` — `i.map(l => …${e.dim(l)}…)`), which washes
+ * out the whole block: the SQL being reviewed came out greyer than the box
+ * drawn around it, and no color applied inside could survive the wrapper.
+ * Its width math also counts an emoji as one column, so a `DEFAULT '👍🏻'`
+ * pushed the right border out of alignment.
+ *
+ * `log.message` has neither problem. The cost is the frame, which was mostly
+ * decoration around the part anyone actually reads.
+ */
+export function block(title: string, body: string): void {
+	p.log.message(`${c.bold(title)}\n${body}`)
 }
 
 export function pad(s: string, n: number): string {

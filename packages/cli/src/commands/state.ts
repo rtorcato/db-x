@@ -2,7 +2,7 @@
 
 import * as p from '@clack/prompts'
 import { readState } from '@db-x/runtime'
-import { c, pad } from '../ui.js'
+import { block, c, pad } from '../ui.js'
 
 export interface StateArgs {
 	workDir: string
@@ -28,5 +28,5 @@ export async function stateCommand(args: StateArgs): Promise<void> {
 	})
 
 	p.log.info(`${c.bold('State')}: ${ids.length} resource(s)`)
-	p.note(lines.join('\n'), c.bold('Resources'))
+	block('Resources', lines.join('\n'))
 }

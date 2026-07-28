@@ -69,6 +69,33 @@ export async function runSql(parent: SqliteParentOutputs, sql: string, ctx: Ctx)
 	})
 }
 
+/**
+ * Run a read-only query and parse its JSON rows. Used by `refresh` hooks,
+ * which must observe the database without changing it.
+ *
+ * `-readonly` is what makes that true: plain `sqlite3 missing.db "…"` *creates*
+ * an empty database, so a drift check would quietly manufacture the very file
+ * it was asked to look for. With the flag it fails instead, which is the
+ * honest answer.
+ */
+export async function queryJson(
+	parent: SqliteParentOutputs,
+	sql: string,
+	ctx: Ctx
+): Promise<Array<Record<string, unknown>>> {
+	const args = [...parent.exec.args, '-readonly', '-json', parent.file, sql]
+	const out = await captureCommand(parent.exec.command, args, {
+		cwd: parent.exec.cwd ?? ctx.workDir,
+		log: ctx.log,
+		signal: ctx.signal,
+		env: parent.exec.env,
+	})
+	const trimmed = out.trim()
+	// A query matching no rows prints nothing at all, not `[]`.
+	if (trimmed === '') return []
+	return JSON.parse(trimmed) as Array<Record<string, unknown>>
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  child_process.spawn wrapper
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,6 +156,60 @@ async function spawnCommand(command: string, args: string[], opts: SpawnOptions)
 				return
 			}
 			resolve()
+		})
+	})
+}
+
+/**
+ * Like `spawnCommand`, but resolves with the child's stdout instead of
+ * streaming it to the log — the caller wants the bytes, not a transcript.
+ */
+async function captureCommand(
+	command: string,
+	args: string[],
+	opts: SpawnOptions
+): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		if (opts.signal.aborted) {
+			reject(new Error(`${command} ${args.join(' ')}: aborted before start`))
+			return
+		}
+		opts.log.debug?.(`$ ${command} ${args.join(' ')}`)
+		const child = spawn(command, args, {
+			cwd: opts.cwd,
+			env: opts.env ? { ...process.env, ...opts.env } : process.env,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		})
+		let stdout = ''
+		let stderr = ''
+		child.stdout?.setEncoding('utf8')
+		child.stderr?.setEncoding('utf8')
+		child.stdout?.on('data', (chunk: string) => {
+			stdout += chunk
+		})
+		child.stderr?.on('data', (chunk: string) => {
+			stderr += chunk
+		})
+		const onAbort = (): void => {
+			child.kill('SIGINT')
+		}
+		opts.signal.addEventListener('abort', onAbort, { once: true })
+		child.on('error', (err) => {
+			opts.signal.removeEventListener('abort', onAbort)
+			reject(new Error(`${command}: ${err.message}`))
+		})
+		child.on('close', (code, sig) => {
+			opts.signal.removeEventListener('abort', onAbort)
+			if (sig) {
+				reject(new Error(`${command} ${args.join(' ')}: terminated by signal ${sig}`))
+				return
+			}
+			if (code !== 0) {
+				const tail = stderr.trim().split('\n').slice(-5).join('\n')
+				reject(new Error(`${command} ${args.join(' ')} failed (exit ${code}):\n${tail}`))
+				return
+			}
+			resolve(stdout)
 		})
 	})
 }

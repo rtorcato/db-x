@@ -61,6 +61,34 @@ so there is always something to roll back to.
 Snapshots are whole-file copies via `sqlite3 .backup`, so a restore brings back
 **both** the schema and the rows. Nothing extra to install.
 
+## When the database and the state disagree
+
+`.dbx/state.json` records what DB-X last applied. If the database changes
+behind its back — you delete `todos.db`, or someone drops a column by hand —
+state still describes the old world, and `preview` will report no changes
+because it has no reason to think otherwise.
+
+`db-x refresh` is what closes that gap: it reads the live database and writes
+what it finds back into state, so the next `preview` plans the repair.
+
+```sh
+sqlite3 todos.db "alter table todos drop column priority;"   # out-of-band change
+
+pnpm exec db-x refresh ./dbx.tsx   # ~ table:todos  drift: columns
+pnpm preview                       # → ALTER TABLE "todos" ADD COLUMN "priority" ...
+pnpm apply --yes                   # column restored
+```
+
+Delete `todos.db` entirely and the same loop rebuilds the schema — refresh sees
+no columns, so the plan becomes a `create` rather than a doomed `ALTER`.
+
+Two limits worth knowing:
+
+- **Seeds do not re-run.** `<SeedData>` has no refresh hook, so a rebuilt table
+  comes back empty. Delete `.dbx/` and re-apply for a true from-scratch run.
+- **Only column and index *names* are compared.** A changed type, default or
+  nullability is not detected as drift yet.
+
 ## Configuration
 
 [`.env.example`](./.env.example) sets `SQLITE_FILE` — the only setting this

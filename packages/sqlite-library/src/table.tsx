@@ -14,7 +14,7 @@
 //   - `serial` + `primaryKey` becomes `INTEGER PRIMARY KEY AUTOINCREMENT`.
 
 import { type AnyElement, type Child, type PlanAction, defineComponent } from '@db-x/runtime'
-import { findSqliteParent, requireSqliteParent, runSql } from './exec.js'
+import { findSqliteParent, queryJson, requireSqliteParent, runSql } from './exec.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  <Column> + <Index> — markers absorbed by <Table> at render time
@@ -121,7 +121,12 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 	apply: async (props, ctx, prior) => {
 		const parent = requireSqliteParent(ctx, 'Table')
 
-		if (!prior) {
+		// `CREATE TABLE IF NOT EXISTS` is idempotent, so taking this path when
+		// the table does still exist costs nothing — but taking the ALTER path
+		// when it doesn't is a hard failure.
+		const priorIsGone = prior !== null && normalizePriorColumns(prior.outputs.columns).length === 0
+
+		if (!prior || priorIsGone) {
 			const ghostRenames = props.columns.filter((c) => c.from)
 			if (ghostRenames.length > 0) {
 				const names = ghostRenames.map((c) => c.name).join(', ')
@@ -168,17 +173,112 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 			ctx.log.warn(`drop failed: ${(err as Error).message}`)
 		}
 	},
+	/**
+	 * Read-only drift check: does the live table still look like what we
+	 * applied? Answers the question `db-x refresh` exists for — "someone
+	 * dropped a column / deleted the database behind my back".
+	 *
+	 * Returns the stored outputs unchanged when the live table matches, so an
+	 * in-sync database reports no drift rather than churning on cosmetic
+	 * differences (SQLite reports resolved type names and its own default
+	 * spellings, which never round-trip to the authored props exactly).
+	 *
+	 * ponytail: compares the set of column and index NAMES, not types,
+	 * defaults or nullability. That catches the failure modes that actually
+	 * happen — a table dropped, a column added or removed out of band — and
+	 * needs no type-normalisation table. Deepen it when a real case demands.
+	 */
+	refresh: async (state, ctx) => {
+		const parent = findSqliteParent(ctx)
+		if (!parent) {
+			ctx.log.warn(`Parent sqlite missing; cannot refresh table ${state.outputs.name}`)
+			return state.outputs
+		}
+		const table = state.outputs.name
+		const gone = { ...state.outputs, columns: [], indexes: [] }
+
+		let liveColumns: Array<Record<string, unknown>>
+		let liveIndexes: Array<Record<string, unknown>>
+		try {
+			liveColumns = await queryJson(parent, `PRAGMA table_info(${quoteIdent(table)})`, ctx)
+			liveIndexes = await queryJson(parent, `PRAGMA index_list(${quoteIdent(table)})`, ctx)
+		} catch (err) {
+			// `-readonly` refuses to open a database file that isn't there, which
+			// is exactly the "I deleted the .db" case — report the table as gone
+			// rather than letting sqlite3 create an empty file to satisfy us.
+			ctx.log.warn(`${table}: ${(err as Error).message}`)
+			return gone
+		}
+
+		if (liveColumns.length === 0) return gone
+
+		const liveColNames = liveColumns.map((c) => String(c.name)).sort()
+		const storedColNames = state.outputs.columns.map((c) => c.name).sort()
+		// Auto-indexes back UNIQUE constraints; they are not ours to track.
+		const liveIdxNames = liveIndexes
+			.map((i) => String(i.name))
+			.filter((n) => !n.startsWith('sqlite_autoindex_'))
+			.sort()
+		const storedIdxNames = state.outputs.indexes.map((i) => i.name).sort()
+
+		const inSync =
+			JSON.stringify(liveColNames) === JSON.stringify(storedColNames) &&
+			JSON.stringify(liveIdxNames) === JSON.stringify(storedIdxNames)
+		if (inSync) return state.outputs
+
+		// Keep the authored spec for every column that still exists, and only
+		// describe genuinely-unknown ones from introspection. Returning SQLite's
+		// own view wholesale would rewrite `integer` as `INTEGER` and re-spell
+		// defaults, which the next diff reads as a type change — and SQLite
+		// cannot ALTER COLUMN, so `preview` would hard-fail on a database that
+		// is merely missing one column.
+		const storedColumns = new Map(state.outputs.columns.map((c) => [c.name, c]))
+		const storedIndexes = new Map(state.outputs.indexes.map((i) => [i.name, i]))
+		return {
+			...state.outputs,
+			columns: liveColumns.map((c) => {
+				const name = String(c.name)
+				return (
+					storedColumns.get(name) ?? {
+						name,
+						type: String(c.type),
+						...(c.pk ? { primaryKey: true } : {}),
+						...(c.notnull ? { notNull: true } : {}),
+						...(c.dflt_value === null || c.dflt_value === undefined
+							? {}
+							: { default: String(c.dflt_value) }),
+					}
+				)
+			}),
+			indexes: liveIdxNames.map((name) => storedIndexes.get(name) ?? { name, columns: [] }),
+		}
+	},
 	// Pure diff at plan time so `preview` / `apply` can classify destructive
 	// changes (DROP INDEX) before any SQL runs. Compares desired columns/
 	// indexes against the last-applied outputs. Throws if the diff would
 	// require an unsupported SQLite ALTER COLUMN.
 	plan: (props, prior): PlanAction => {
 		if (!prior) return { type: 'create' }
-		if (JSON.stringify(props) === JSON.stringify(prior.props)) return { type: 'no-op' }
+		// A prior with no columns means refresh looked and found nothing — the
+		// table (or the whole database file) is gone. Altering it would emit
+		// ADD COLUMN against something that doesn't exist; it needs creating.
+		if (normalizePriorColumns(prior.outputs.columns).length === 0) return { type: 'create' }
+		// Deliberately NOT short-circuiting on `props === prior.props`: refresh
+		// writes observed reality into `outputs`, so identical props can still
+		// need work (a column dropped out of band). Diffing against outputs is
+		// what makes `refresh` -> `preview` -> `apply` reconcile drift at all.
+
 		const diff = diffTable(props.name, props.columns, props.indexes, {
 			columns: normalizePriorColumns(prior.outputs.columns),
 			indexes: normalizePriorIndexes(prior.outputs.indexes),
 		})
+		if (diff.sql.length === 0) {
+			// Nothing to run against the database; only persist if props moved
+			// (a changed `description`, say).
+			return JSON.stringify(props) === JSON.stringify(prior.props)
+				? { type: 'no-op' }
+				: { type: 'update', reason: 'props changed' }
+		}
 		const reason =
 			diff.sql.length > 0
 				? `${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.droppedIndexes.length} index drop(s)`
@@ -192,6 +292,11 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 // ─────────────────────────────────────────────────────────────────────────────
 //  SQL builders — exported for tests + future rich-diff work
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Double-quote an identifier for interpolation into a PRAGMA. */
+function quoteIdent(name: string): string {
+	return `"${name.replace(/"/g, '""')}"`
+}
 
 /** Case-insensitive friendly aliases for types that aren't native SQLite storage classes. */
 const TYPE_ALIASES: Record<string, string> = {

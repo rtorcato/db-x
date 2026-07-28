@@ -160,13 +160,24 @@ const CollectionResource = defineComponent<CollectionResourceProps, CollectionRe
 	// changes (index drops, validator tightening) before anything runs.
 	plan: (props, prior): PlanAction => {
 		if (!prior) return { type: 'create' }
-		if (JSON.stringify(props) === JSON.stringify(prior.props)) return { type: 'no-op' }
+		// Deliberately NOT short-circuiting on `props === prior.props`: refresh
+		// writes observed reality into `outputs`, so identical props can still
+		// need work (a column dropped out of band). Diffing against outputs is
+		// what makes `refresh` -> `preview` -> `apply` reconcile drift at all.
+
 		const diff = diffCollection(props, {
 			validator: prior.outputs.validator,
 			validationLevel: prior.outputs.validationLevel,
 			validationAction: prior.outputs.validationAction,
 			indexes: normalizePriorIndexes(prior.outputs.indexes),
 		})
+		if (diff.js.length === 0) {
+			// Nothing to run against the database; only persist if props moved
+			// (a changed `description`, say).
+			return JSON.stringify(props) === JSON.stringify(prior.props)
+				? { type: 'no-op' }
+				: { type: 'update', reason: 'props changed' }
+		}
 		const reason =
 			diff.js.length > 0
 				? `${diff.addedIndexes.length} index add(s), ${diff.changedIndexes.length} index change(s), ${diff.droppedIndexes.length} index drop(s)${diff.validatorChanged ? ', validator updated' : ''}`

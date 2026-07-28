@@ -4,7 +4,8 @@
 > DB-X's layer and *where* they rank. None of it is committed work — tracking lives in
 > [GitHub milestones](https://github.com/rtorcato/db-x/milestones) and issues (see
 > [#47](https://github.com/rtorcato/db-x/issues/47)). Read [`GOALS.md`](./GOALS.md) first
-> for the non-goals this note stays inside.
+> for the non-goals this note stays inside, and [`competition.md`](./competition.md)
+> for how zero-downtime DDL ranks against the rest of the competitive roadmap.
 
 ## How sharding actually maps onto DB-X
 

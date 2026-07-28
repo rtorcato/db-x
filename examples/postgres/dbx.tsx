@@ -51,6 +51,6 @@ const DATABASE_URL =
 
 export default (
 	<DatabaseTarget url={DATABASE_URL} description="Production todos database">
-		<TodosSchema {...TODOS_PG} />
+		<TodosSchema {...TODOS_PG} readonlyPassword={getENV('READONLY_PASSWORD')} />
 	</DatabaseTarget>
 )

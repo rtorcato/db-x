@@ -14,20 +14,22 @@
  */
 
 import { Column, DbUser, Extension, Index, Postgres, SeedData, Table } from '@db-x/postgres-library'
-import { getENV } from '@rtorcato/js-common/env'
 
 export interface TodosSchemaProps {
 	/** Schema owner credentials — passed by the entry file from env. */
 	user?: string
 	password?: string
 	database?: string
+	/** Password for the read-only role — also passed by the entry file. */
+	readonlyPassword: string
 }
 
 /**
- * The todos schema. `user` / `password` / `database` are supplied by the
- * connection entry; the read-only role's password comes from env at render.
+ * The todos schema. All credentials — owner and the read-only role — are
+ * supplied by the connection entry (`dbx.tsx`), which owns env loading. This
+ * component reads no env itself, so it stays reusable under any parent.
  */
-export function TodosSchema(props: TodosSchemaProps = {}) {
+export function TodosSchema(props: TodosSchemaProps) {
 	return (
 		<Postgres
 			name="todos-db"
@@ -66,7 +68,7 @@ export function TodosSchema(props: TodosSchemaProps = {}) {
 
 			<DbUser
 				name="todos_readonly"
-				password={getENV('READONLY_PASSWORD')}
+				password={props.readonlyPassword}
 				description="Used by reporting + the marketing dashboard"
 				privileges={{
 					database: ['CONNECT'],

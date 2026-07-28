@@ -59,6 +59,32 @@ The bundled [`docker-compose.yml`](./docker-compose.yml) provides the server on
 - **Credentials appear in `ps`.** mongosh has no `PGPASSWORD` equivalent. DB-X
   masks the password in its own output only.
 
+## Migrate and roll back
+
+The full loop — change the schema, see exactly what will run, apply it, and
+undo it if it was wrong.
+
+```sh
+mongosh "$MONGODB_URL" --quiet --eval 'db.getSiblingDB("todos").todos.find()'
+
+# 1. change the schema — e.g. add a column to schema.tsx, or remove an <Index>
+pnpm preview                    # shows the exact statements, not a summary
+pnpm apply --yes                      # run them
+
+# 2. changed your mind? destructive changes are snapshotted first
+pnpm apply --yes --allow-destructive  # captures a snapshot, then applies
+pnpm exec db-x restore --yes                    # roll the database back to it
+```
+
+`preview` prints the statements a change will execute, marking destructive ones
+in red. `apply` refuses a destructive change unless you pass
+`--allow-destructive`, and refuses again if it cannot capture a snapshot first —
+so there is always something to roll back to.
+
+Snapshots use `mongodump` / `mongorestore` (MongoDB Database Tools, a separate
+install) and always include documents — a restore undoes data loss as well as
+index and validator changes.
+
 ## Configuration
 
 Connection settings live in [`.env.example`](./.env.example). `config.ts` has **no

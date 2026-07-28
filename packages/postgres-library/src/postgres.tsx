@@ -34,6 +34,21 @@ export interface PostgresProps {
 	 * A pre-flight snapshot on protected applies lands with the snapshot driver.
 	 */
 	protect?: boolean
+	/**
+	 * What a pre-flight snapshot captures before a destructive apply.
+	 *
+	 *   `schema` (default) — structure only. Fast and small on any database,
+	 *     but `db-x restore` brings back the schema and NOT the rows: a dropped
+	 *     column's data is gone for good.
+	 *   `full` — structure and row data, so a restore actually undoes the
+	 *     migration. The dump runs inline before the apply and holds a
+	 *     transaction open for its duration, so on a large database this is
+	 *     slow and hostile to vacuum. Deliberate, per-database opt-in.
+	 *
+	 * SQLite and MongoDB have no equivalent knob — their tools always capture
+	 * everything (see @db-x/snapshot-sqlite, @db-x/snapshot-mongodump).
+	 */
+	snapshot?: 'schema' | 'full'
 	/** AI-readable purpose. Surfaced by `db-x describe` / MCP. */
 	description?: string
 }
@@ -62,6 +77,7 @@ export const Postgres = defineComponent<PostgresProps, PostgresParentOutputs>({
 			database,
 			exec: runtime.exec,
 			snapshotDriver: 'pg-dump',
+			snapshotMode: props.snapshot ?? 'schema',
 		}
 	},
 	destroy: async (state, ctx) => {

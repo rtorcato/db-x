@@ -47,6 +47,33 @@ PATH. The bundled [`docker-compose.yml`](./docker-compose.yml) provides one (SQL
 on `:26257`, DB Console on http://localhost:8080); or point `DATABASE_URL` at a
 CockroachDB Cloud cluster instead.
 
+## Migrate and roll back
+
+The full loop — change the schema, see exactly what will run, apply it, and
+undo it if it was wrong.
+
+```sh
+psql "$DATABASE_URL" -c "select * from todos;"   # see the data at any point
+
+# 1. change the schema — e.g. add a column to schema.tsx, or remove an <Index>
+pnpm preview                    # shows the exact statements, not a summary
+pnpm apply --yes                      # run them
+
+# 2. changed your mind? destructive changes are snapshotted first
+pnpm apply --yes --allow-destructive  # captures a snapshot, then applies
+pnpm exec db-x restore --yes                    # roll the database back to it
+```
+
+`preview` prints the statements a change will execute, marking destructive ones
+in red. `apply` refuses a destructive change unless you pass
+`--allow-destructive`, and refuses again if it cannot capture a snapshot first —
+so there is always something to roll back to.
+
+Snapshots go through `pg_dump`, which CockroachDB does **not** officially
+support (its own equivalents are `BACKUP` / `SHOW CREATE` / `EXPORT`). Treat
+rollback here as unverified — see
+[#78](https://github.com/rtorcato/db-x/issues/78).
+
 ## Configuration
 
 Connection settings live in [`.env.example`](./.env.example). `config.ts` has **no

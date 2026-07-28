@@ -45,6 +45,7 @@ db-x destroy ./schema.tsx    # tear down in reverse order
 | [`@db-x/mongodb-library`](./packages/mongodb-library) | MongoDB schema components: `<Mongo>`, `<Collection>`, `<Index>`, `<SeedData>` — collections, indexes and JSON Schema validators, not DDL | MIT |
 | [`@db-x/snapshot-pg-dump`](./packages/snapshot-pg-dump) | `pg_dump`-based `SnapshotDriver` — pre-flight snapshots for the schema time machine | MIT |
 | [`@db-x/snapshot-mongodump`](./packages/snapshot-mongodump) | `mongodump`-based `SnapshotDriver` — the same, for MongoDB | MIT |
+| [`@db-x/snapshot-sqlite`](./packages/snapshot-sqlite) | `sqlite3 .backup`-based `SnapshotDriver` — the same, for SQLite | MIT |
 
 ## Development
 
@@ -72,6 +73,7 @@ packages/sqlite-library     @db-x/sqlite-library     schema components (SQLite)
 packages/mongodb-library    @db-x/mongodb-library    schema components (MongoDB)
 packages/snapshot-pg-dump   @db-x/snapshot-pg-dump   pg_dump snapshot driver
 packages/snapshot-mongodump @db-x/snapshot-mongodump mongodump snapshot driver
+packages/snapshot-sqlite    @db-x/snapshot-sqlite    sqlite .backup snapshot driver
 apps/docs                   Docusaurus site (db-x.dev)
 examples/                   runnable demo schemas (postgres, sqlite, supabase, cockroachdb, mongodb)
 docs/                       GOALS.md (design), large-scale.md (design note)
@@ -81,5 +83,5 @@ docs/                       GOALS.md (design), large-scale.md (design note)
 
 Two-license split: the engine (`@db-x/runtime`, `@db-x/cli`) is **BSL-1.1**; the
 libraries and snapshot driver (`@db-x/postgres-library`, `@db-x/sqlite-library`,
-`@db-x/mongodb-library`, `@db-x/snapshot-pg-dump`, `@db-x/snapshot-mongodump`)
-are **MIT**. See [`LICENSING.md`](./LICENSING.md).
+`@db-x/mongodb-library`, `@db-x/snapshot-pg-dump`, `@db-x/snapshot-mongodump`,
+`@db-x/snapshot-sqlite`) are **MIT**. See [`LICENSING.md`](./LICENSING.md).

@@ -1,3 +1,4 @@
+import { getComponentSpec, type PlanAction } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
 import { type ColumnSpec, type IndexSpec, buildCreateTable, columnSql, diffTable } from './table.js'
 
@@ -163,5 +164,60 @@ describe('diffTable — unsupported ALTER COLUMN throws', () => {
 		const next = [col({ name: 'id', type: 'int', primaryKey: true })]
 		const p = prior([col({ name: 'id', type: 'int', notNull: false, unique: false })])
 		expect(diffTable('t', next, [], p).sql).toEqual([])
+	})
+})
+
+describe('columnSql — empty default', () => {
+	it('rejects default="" instead of emitting invalid SQL', () => {
+		// SQLite produced `DEFAULT ()` and Postgres `DEFAULT ` with nothing
+		// after it — both syntax errors, surfaced only at apply time.
+		expect(() => columnSql(col({ name: 'desc', type: 'text', default: '' }))).toThrow(
+			/empty default is not valid SQL/
+		)
+		expect(() => columnSql(col({ name: 'desc', type: 'text', default: '   ' }))).toThrow(
+			/empty default is not valid SQL/
+		)
+	})
+
+	it('accepts an explicit empty string literal', () => {
+		expect(columnSql(col({ name: 'desc', type: 'text', default: "''" }))).toContain("DEFAULT ''")
+	})
+})
+
+describe('TableResource.plan — drift reconciliation', () => {
+	const spec = getComponentSpec('@db-x/sqlite-library:table')
+	// The registry stores specs erased to Record<string, unknown>, so the plan
+	// hook comes back untyped — narrow it once here rather than at each call.
+	if (!spec?.plan) throw new Error('sqlite table component is not registered with a plan hook')
+	const planHook = spec.plan as (p: object, s: object | null) => PlanAction
+	const plan = (props: object, prior: object | null): PlanAction => planHook(props, prior)
+
+	const props = {
+		name: 'todos',
+		columns: [idCol, col({ name: 'title' })],
+		indexes: [] as IndexSpec[],
+	}
+	const priorOf = (columns: ColumnSpec[]) => ({
+		props,
+		outputs: { name: 'todos', columns, indexes: [] },
+	})
+
+	it('is a no-op when props and live outputs both match', () => {
+		expect(plan(props, priorOf(props.columns)).type).toBe('no-op')
+	})
+
+	// The bug this guards: plan() used to return no-op whenever props were
+	// unchanged, so `refresh` could record that a column had vanished and
+	// `preview` would still report nothing to do.
+	it('plans the repair when outputs drifted but props did not', () => {
+		const action = plan(props, priorOf([idCol]))
+		expect(action.type).toBe('update')
+		expect('details' in action && action.details?.[0]).toContain('ADD COLUMN "title"')
+	})
+
+	it('plans a create when outputs record no columns at all', () => {
+		// What refresh writes when the table — or the whole .db file — is gone.
+		// An ALTER against a missing table is a hard failure; it needs creating.
+		expect(plan(props, priorOf([])).type).toBe('create')
 	})
 })

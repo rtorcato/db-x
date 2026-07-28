@@ -106,12 +106,17 @@ export interface RuntimeExec {
  * `ALTER COLUMN "amount" TYPE ...`). The CLI marks these in `preview` and
  * refuses to `apply` them without `--allow-destructive` — or unconditionally
  * when the resource is under a `protect`-ed ancestor.
+ *
+ * `details` is the exact statements the apply will run, in order. A component
+ * that already computes them at plan time should pass them through: `reason`
+ * is a summary ("1 addition(s)"), and a summary is not enough to review a
+ * migration. Entries that also appear in `destructive` are flagged as such.
  */
 export type PlanAction =
 	| { type: 'create' }
-	| { type: 'update'; reason: string; destructive?: string[] }
-	| { type: 'replace'; reason: string; destructive?: string[] }
-	| { type: 'destroy'; reason: string; destructive?: string[] }
+	| { type: 'update'; reason: string; destructive?: string[]; details?: string[] }
+	| { type: 'replace'; reason: string; destructive?: string[]; details?: string[] }
+	| { type: 'destroy'; reason: string; destructive?: string[]; details?: string[] }
 	| { type: 'no-op' }
 
 /** Minimal validator interface. Compatible with zod, valibot, custom validators. */

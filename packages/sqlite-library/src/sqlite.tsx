@@ -43,8 +43,11 @@ export const Sqlite = defineComponent<SqliteProps, SqliteParentOutputs>({
 		return {
 			file,
 			// Direct spawn, no wrapper — sqlite3 is a single self-contained
-			// binary, unlike psql/pg_dump which differ by child tool.
+			// binary, unlike psql/pg_dump which differ by child tool. The
+			// snapshot driver appends its own `.backup` / `.restore` dot-command
+			// to the same invocation.
 			exec: { command: 'sqlite3', args: [] },
+			snapshotDriver: 'sqlite-backup',
 		}
 	},
 	destroy: async (state, ctx) => {

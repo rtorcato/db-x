@@ -203,18 +203,29 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 	// desired columns/indexes against the last-applied outputs.
 	plan: (props, prior): PlanAction => {
 		if (!prior) return { type: 'create' }
-		if (JSON.stringify(props) === JSON.stringify(prior.props)) return { type: 'no-op' }
+		// Deliberately NOT short-circuiting on `props === prior.props`: refresh
+		// writes observed reality into `outputs`, so identical props can still
+		// need work (a column dropped out of band). Diffing against outputs is
+		// what makes `refresh` -> `preview` -> `apply` reconcile drift at all.
+
 		const diff = diffTable(props.name, props.columns, props.indexes, {
 			columns: normalizePriorColumns(prior.outputs.columns),
 			indexes: normalizePriorIndexes(prior.outputs.indexes),
 		})
+		if (diff.sql.length === 0) {
+			// Nothing to run against the database; only persist if props moved
+			// (a changed `description`, say).
+			return JSON.stringify(props) === JSON.stringify(prior.props)
+				? { type: 'no-op' }
+				: { type: 'update', reason: 'props changed' }
+		}
 		const reason =
 			diff.sql.length > 0
 				? `${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.alterations.length} alter(s), ${diff.droppedIndexes.length} index drop(s)`
 				: 'props changed'
 		return diff.destructive.length > 0
-			? { type: 'update', reason, destructive: diff.destructive }
-			: { type: 'update', reason }
+			? { type: 'update', reason, destructive: diff.destructive, details: diff.sql }
+			: { type: 'update', reason, details: diff.sql }
 	},
 })
 
@@ -228,6 +239,11 @@ export function buildCreateTable(props: { name: string; columns: ColumnSpec[] })
 }
 
 export function columnSql(c: ColumnSpec): string {
+	if (c.default !== undefined && c.default.trim() === '') {
+		throw new Error(
+			`<Column name="${c.name}" default="">: an empty default is not valid SQL. Use default="''" for an empty string, or omit the prop for no default.`
+		)
+	}
 	const parts = [`"${c.name}"`, c.type]
 	if (c.primaryKey) parts.push('PRIMARY KEY')
 	if (c.notNull && !c.primaryKey) parts.push('NOT NULL')

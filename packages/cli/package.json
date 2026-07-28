@@ -24,6 +24,7 @@
     "@db-x/runtime": "workspace:*",
     "@db-x/snapshot-mongodump": "workspace:*",
     "@db-x/snapshot-pg-dump": "workspace:*",
+    "@db-x/snapshot-sqlite": "workspace:*",
     "picocolors": "^1.0.1",
     "tsx": "^4.19.0"
   },

@@ -110,6 +110,25 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cli
 
+  examples/mongodb:
+    dependencies:
+      '@db-x/mongodb-library':
+        specifier: workspace:*
+        version: link:../../packages/mongodb-library
+      '@db-x/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@rtorcato/js-common':
+        specifier: ^2.0.1
+        version: 2.8.2(@types/node@26.1.1)
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
+    devDependencies:
+      '@db-x/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+
   examples/postgres:
     dependencies:
       '@db-x/postgres-library':
@@ -182,6 +201,24 @@ importers:
         specifier: ^4.19.0
         version: 4.23.1
     devDependencies:
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
+      rimraf:
+        specifier: ^5.0.5
+        version: 5.0.10
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+
+  packages/mongodb-library:
+    devDependencies:
+      '@db-x/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@types/node':
         specifier: ^22
         version: 22.20.1

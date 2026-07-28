@@ -4,6 +4,7 @@
     { "path": "./packages/runtime" },
     { "path": "./packages/cli" },
     { "path": "./packages/postgres-library" },
+    { "path": "./packages/mongodb-library" },
     { "path": "./packages/snapshot-pg-dump" },
     { "path": "./packages/sqlite-library" }
   ]

@@ -1,0 +1,23 @@
+# Local single-node MongoDB for the DB-X standalone demo — no Infra-X involved.
+# `db-x apply ./dbx.tsx` points at this via MONGODB_URL (defaults in .env.example).
+#
+#   docker compose up -d --wait      # start MongoDB, wait until it's ready
+#   pnpm apply                       # db-x applies the schema against it
+#   docker compose down -v           # stop and wipe the volume
+#
+# The root user is created on first init only (an existing volume keeps its
+# old credentials — `down -v` to reset). Auth is against the `admin` database,
+# which is why the demo URI carries ?authSource=admin.
+services:
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: todos
+      MONGO_INITDB_ROOT_PASSWORD: todos
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 3s
+      timeout: 5s
+      retries: 20

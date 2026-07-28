@@ -34,6 +34,7 @@ license applies to which package.
 |---|---|
 | `packages/postgres-library` | `@db-x/postgres-library` |
 | `packages/sqlite-library` | `@db-x/sqlite-library` |
+| `packages/mongodb-library` | `@db-x/mongodb-library` |
 | `packages/snapshot-pg-dump` | `@db-x/snapshot-pg-dump` |
 
 Examples under `examples/` and the docs site under `apps/docs` are unpublished

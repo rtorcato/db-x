@@ -126,6 +126,25 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cli
 
+  examples/supabase:
+    dependencies:
+      '@db-x/postgres-library':
+        specifier: workspace:*
+        version: link:../../packages/postgres-library
+      '@db-x/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@rtorcato/js-common':
+        specifier: ^2.0.1
+        version: 2.8.2(@types/node@26.1.1)
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
+    devDependencies:
+      '@db-x/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+
   packages/cli:
     dependencies:
       '@clack/prompts':

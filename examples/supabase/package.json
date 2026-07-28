@@ -1,0 +1,21 @@
+{
+  "name": "@db-x-examples/supabase",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DB-X demo: a todos schema with Supabase auth.users ownership + Row Level Security, applied via <DatabaseTarget> (dbx.tsx).",
+  "scripts": {
+    "preview": "db-x preview ./dbx.tsx",
+    "apply": "db-x apply ./dbx.tsx",
+    "destroy": "db-x destroy ./dbx.tsx"
+  },
+  "dependencies": {
+    "@db-x/postgres-library": "workspace:*",
+    "@db-x/runtime": "workspace:*",
+    "@rtorcato/js-common": "^2.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@db-x/cli": "workspace:*"
+  }
+}

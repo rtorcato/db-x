@@ -5,7 +5,7 @@
 // (does the plan contain destructive changes?) and *where to point it* (find a
 // connection in state to dump).
 
-import type { Plan, StateFile } from '@db-x/runtime'
+import type { Plan, SnapshotRef, StateFile } from '@db-x/runtime'
 import type { PgDumpConnection } from '@db-x/snapshot-pg-dump'
 
 /** True if any planned action performs a destructive change (DROP, TYPE narrow, …). */
@@ -40,4 +40,22 @@ export function resolveSnapshotConnection(state: StateFile): PgDumpConnection | 
 		}
 	}
 	return null
+}
+
+/**
+ * Pick which snapshot id `db-x restore` should roll back to:
+ *   1. an explicit `--snapshot <id>`, else
+ *   2. the snapshot pinned to the current state revision (`state.snapshot` —
+ *      the pre-apply snapshot of the last destructive apply), else
+ *   3. the newest snapshot in the store.
+ * Returns null only when there's no explicit/pinned id and the store is empty.
+ * A returned id is not guaranteed to exist in the store — the caller verifies
+ * and reports if it was pruned.
+ */
+export function selectSnapshotId(
+	explicit: string | undefined,
+	pinned: string | undefined,
+	available: SnapshotRef[]
+): string | null {
+	return explicit ?? pinned ?? available[0]?.id ?? null
 }

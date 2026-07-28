@@ -1,6 +1,6 @@
-import type { Plan, PlanAction, ResourceState, StateFile } from '@db-x/runtime'
+import type { Plan, PlanAction, ResourceState, SnapshotRef, StateFile } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
-import { planHasDestructive, resolveSnapshotConnection } from './snapshot.js'
+import { planHasDestructive, resolveSnapshotConnection, selectSnapshotId } from './snapshot.js'
 
 const diff = (id: string, action: PlanAction) => ({
 	id,
@@ -76,5 +76,37 @@ describe('resolveSnapshotConnection', () => {
 		expect(
 			resolveSnapshotConnection(stateOf(res('half', { exec: { command: 'env', args: [] } })))
 		).toBeNull()
+	})
+})
+
+describe('selectSnapshotId', () => {
+	const ref = (id: string): SnapshotRef => ({
+		id,
+		stateRev: 'r',
+		createdAt: '2026-07-28T00:00:00.000Z',
+		driver: 'pg-dump',
+		mode: 'schema',
+	})
+	// list() returns newest first, so [0] is the newest.
+	const store = [ref('snap-new'), ref('snap-old')]
+
+	it('prefers an explicit id over everything', () => {
+		expect(selectSnapshotId('snap-x', 'snap-pinned', store)).toBe('snap-x')
+	})
+
+	it('falls back to the pinned id when none is explicit', () => {
+		expect(selectSnapshotId(undefined, 'snap-pinned', store)).toBe('snap-pinned')
+	})
+
+	it('falls back to the newest in the store when nothing explicit or pinned', () => {
+		expect(selectSnapshotId(undefined, undefined, store)).toBe('snap-new')
+	})
+
+	it('returns null only when there is no explicit/pinned id and the store is empty', () => {
+		expect(selectSnapshotId(undefined, undefined, [])).toBeNull()
+	})
+
+	it('returns a pinned id even if the store is empty (caller reports it missing)', () => {
+		expect(selectSnapshotId(undefined, 'snap-pruned', [])).toBe('snap-pruned')
 	})
 })

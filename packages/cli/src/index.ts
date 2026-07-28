@@ -16,6 +16,7 @@ import { describeCommand } from './commands/describe.js'
 import { destroyCommand } from './commands/destroy.js'
 import { previewCommand } from './commands/preview.js'
 import { refreshCommand } from './commands/refresh.js'
+import { restoreCommand } from './commands/restore.js'
 import { stateCommand } from './commands/state.js'
 import { failNonInteractive, isInteractive } from './tty.js'
 import { banner, c } from './ui.js'
@@ -25,6 +26,7 @@ export const COMMANDS = [
 	'apply',
 	'refresh',
 	'destroy',
+	'restore',
 	'state',
 	'describe',
 	'help',
@@ -39,6 +41,8 @@ export interface ParsedArgs {
 	phase: string | undefined
 	allowDestructive: boolean
 	noSnapshot: boolean
+	/** Explicit snapshot id for `db-x restore` (`--snapshot <id>`). */
+	snapshot: string | undefined
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -48,6 +52,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 	let phase: string | undefined
 	let allowDestructive = false
 	let noSnapshot = false
+	let snapshot: string | undefined
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i] as string // safe: i < args.length
@@ -57,6 +62,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
 			allowDestructive = true
 		} else if (arg === '--no-snapshot') {
 			noSnapshot = true
+		} else if (arg.startsWith('--snapshot=')) {
+			snapshot = arg.slice('--snapshot='.length)
+		} else if (arg === '--snapshot' && i + 1 < args.length) {
+			i++
+			snapshot = args[i] as string
 		} else if (arg === '-h' || arg === '--help') {
 			positional.unshift('help')
 		} else if (arg === '--json') {
@@ -83,6 +93,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 		phase,
 		allowDestructive,
 		noSnapshot,
+		snapshot,
 	}
 }
 
@@ -162,6 +173,10 @@ async function main(): Promise<void> {
 			await destroyCommand({ file, workDir, yes: parsed.yes, phase: parsed.phase })
 			return
 		}
+		case 'restore':
+			// No file needed — connection + snapshot pin both come from .dbx/.
+			await restoreCommand({ workDir, yes: parsed.yes, snapshot: parsed.snapshot })
+			return
 		case 'describe':
 			// Unreachable: handled by the pre-banner early-return above so its
 			// JSON output stays clean. Listed here for exhaustiveness.
@@ -176,7 +191,7 @@ async function main(): Promise<void> {
 async function pickCommand(): Promise<Command | null> {
 	if (!isInteractive()) {
 		failNonInteractive(
-			'non-interactive stdout: specify a command — preview | apply | refresh | destroy | state | describe | help. Run `db-x help` for usage.'
+			'non-interactive stdout: specify a command — preview | apply | refresh | destroy | restore | state | describe | help. Run `db-x help` for usage.'
 		)
 	}
 	const choice = await p.select({
@@ -186,6 +201,7 @@ async function pickCommand(): Promise<Command | null> {
 			{ value: 'apply', label: c.green('apply'), hint: 'execute changes against state' },
 			{ value: 'refresh', label: c.yellow('refresh'), hint: 'read live infra, surface drift' },
 			{ value: 'destroy', label: c.red('destroy'), hint: 'tear everything down' },
+			{ value: 'restore', label: c.blue('restore'), hint: 'roll the database back to a snapshot' },
 			{ value: 'state', label: c.magenta('state'), hint: 'show the current state file' },
 			{ value: 'help', label: c.dim('help'), hint: 'show CLI usage' },
 		],
@@ -282,6 +298,7 @@ function printHelp(): void {
 		`  ${c.cyan('db-x')} ${c.bold('apply')}   ${c.dim('<file>')}    Render, diff, execute changes, persist state`,
 		`  ${c.cyan('db-x')} ${c.bold('refresh')} ${c.dim('<file>')}    Re-read live infra, update state outputs, surface drift`,
 		`  ${c.cyan('db-x')} ${c.bold('destroy')} ${c.dim('<file>')}    Tear down everything in state (reverse order)`,
+		`  ${c.cyan('db-x')} ${c.bold('restore')}            Roll the database back to a pre-apply snapshot`,
 		`  ${c.cyan('db-x')} ${c.bold('state')}              Print the contents of .dbx/state.json`,
 		`  ${c.cyan('db-x')} ${c.bold('describe')} ${c.dim('<file>')}   Dump graph + state + plan as JSON (LLM-optimized; pipe to jq)`,
 		`  ${c.cyan('db-x')} ${c.bold('help')}               Show this message`,
@@ -291,6 +308,7 @@ function printHelp(): void {
 		`  ${c.yellow('--phase')} ${c.dim('<phase>')}        Run only the named phase (setup, monitoring, backup, teardown)`,
 		`  ${c.yellow('--allow-destructive')}    Permit destructive DDL (DROP, ALTER TYPE) on unprotected resources`,
 		`  ${c.yellow('--no-snapshot')}          Skip the pre-flight snapshot taken before destructive DDL on apply`,
+		`  ${c.yellow('--snapshot')} ${c.dim('<id>')}       restore: pick a snapshot by id (default: the one pinned to state)`,
 		'',
 		`${c.bold('Environment')}`,
 		`  ${c.magenta('DEBUG=db-x')}      Enable debug logging`,

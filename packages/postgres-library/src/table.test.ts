@@ -259,3 +259,39 @@ describe('columnSql — empty default', () => {
 		expect(columnSql(col({ name: 'desc', type: 'text', default: "''" }))).toContain("DEFAULT ''")
 	})
 })
+
+describe('columnSql — unquoted string default', () => {
+	// Postgres reads a bare word in a DEFAULT as a column reference and fails
+	// with `column "blue" does not exist` — at apply time, after the plan was
+	// rendered and approved. Same trap SQLite springs as "is not constant".
+	it('rejects a bare word', () => {
+		expect(() => columnSql(col({ name: 'color', type: 'text', default: 'blue' }))).toThrow(
+			/does not exist/
+		)
+	})
+
+	it('names the quoted replacement in the message', () => {
+		expect(() => columnSql(col({ name: 'color', type: 'text', default: 'blue' }))).toThrow(
+			/default="'blue'"/
+		)
+	})
+
+	it('still accepts literals, casts, keywords and expressions', () => {
+		expect(columnSql(col({ name: 'n', type: 'integer', default: '0' }))).toContain('DEFAULT 0')
+		expect(columnSql(col({ name: 's', type: 'text', default: "'blue'" }))).toContain(
+			"DEFAULT 'blue'"
+		)
+		expect(columnSql(col({ name: 's', type: 'text', default: "'{}'::jsonb" }))).toContain(
+			"DEFAULT '{}'::jsonb"
+		)
+		expect(columnSql(col({ name: 'b', type: 'boolean', default: 'true' }))).toContain(
+			'DEFAULT true'
+		)
+		expect(columnSql(col({ name: 't', type: 'timestamptz', default: 'now()' }))).toContain(
+			'DEFAULT now()'
+		)
+		expect(
+			columnSql(col({ name: 't', type: 'timestamptz', default: 'CURRENT_TIMESTAMP' }))
+		).toContain('DEFAULT CURRENT_TIMESTAMP')
+	})
+})

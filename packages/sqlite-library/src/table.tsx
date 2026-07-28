@@ -314,18 +314,48 @@ function resolveType(type: string): string {
 	return TYPE_ALIASES[type.toLowerCase()] ?? type
 }
 
+// The bare words SQLite accepts as a DEFAULT without quotes or parens.
+const BARE_DEFAULTS = new Set([
+	'null',
+	'true',
+	'false',
+	'current_timestamp',
+	'current_date',
+	'current_time',
+])
+
 /**
- * SQLite has no `SET DEFAULT <expr>` grammar for literals vs expressions —
- * literals (numbers, quoted strings) are written as-is; anything else
- * (a function call, `CURRENT_TIMESTAMP`, …) must be a parenthesized
- * expression. Values already wrapped in parens pass through unchanged.
+ * Render a `DEFAULT` clause, or refuse.
+ *
+ * `default` is raw SQL, so a literal string has to carry its own quotes:
+ * `default="'blue'"`, not `default="blue"`. The old fallback wrapped anything
+ * unrecognised in parens and hoped it was an expression, which turned
+ * `default="blue"` into `DEFAULT (blue)` — accepted by the planner, then
+ * rejected by SQLite at apply time with "default value of column [x] is not
+ * constant". Failing here instead means the plan never renders a statement
+ * that cannot run, and the message names the exact replacement.
+ *
+ * A bare function call (`datetime('now')`) is still parenthesised for the
+ * caller — that is the one unquoted form where the intent is unambiguous.
  */
-function formatDefault(value: string): string {
+function formatDefault(name: string, value: string): string {
 	const trimmed = value.trim()
 	if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed
-	if (/^'.*'$/.test(trimmed)) return trimmed
+	if (/^'([^']|'')*'$/.test(trimmed)) return trimmed
+	if (/^[xX]'[0-9a-fA-F]*'$/.test(trimmed)) return trimmed
+	if (BARE_DEFAULTS.has(trimmed.toLowerCase())) return trimmed
 	if (trimmed.startsWith('(') && trimmed.endsWith(')')) return trimmed
-	return `(${trimmed})`
+	if (trimmed.includes('(')) return `(${trimmed})`
+
+	if (trimmed === '') {
+		throw new Error(
+			`<Column name="${name}" default="">: an empty default is not valid SQL. Use default="''" for an empty string, or omit the prop for no default.`
+		)
+	}
+	throw new Error(
+		`<Column name="${name}" default="${value}">: this would emit DEFAULT (${trimmed}), which SQLite evaluates as an expression and rejects — "default value of column [${name}] is not constant". ` +
+			`\`default\` is raw SQL, so a literal string carries its own quotes: default="'${trimmed.replace(/'/g, "''")}'". For an expression, wrap it in parens.`
+	)
 }
 
 export function buildCreateTable(props: { name: string; columns: ColumnSpec[] }): string {
@@ -334,11 +364,6 @@ export function buildCreateTable(props: { name: string; columns: ColumnSpec[] })
 }
 
 export function columnSql(c: ColumnSpec): string {
-	if (c.default !== undefined && c.default.trim() === '') {
-		throw new Error(
-			`<Column name="${c.name}" default="">: an empty default is not valid SQL. Use default="''" for an empty string, or omit the prop for no default.`
-		)
-	}
 	const isSerialPk = c.type.toLowerCase() === 'serial' && c.primaryKey
 	const parts = [`"${c.name}"`]
 	if (isSerialPk) {
@@ -349,7 +374,7 @@ export function columnSql(c: ColumnSpec): string {
 	}
 	if (c.notNull && !c.primaryKey) parts.push('NOT NULL')
 	if (c.unique && !c.primaryKey) parts.push('UNIQUE')
-	if (c.default !== undefined) parts.push(`DEFAULT ${formatDefault(c.default)}`)
+	if (c.default !== undefined) parts.push(`DEFAULT ${formatDefault(c.name, c.default)}`)
 	return parts.join(' ')
 }
 

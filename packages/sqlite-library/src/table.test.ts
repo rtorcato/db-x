@@ -184,6 +184,64 @@ describe('columnSql — empty default', () => {
 	})
 })
 
+describe('columnSql — unquoted string default', () => {
+	// Verified against sqlite 3.x: `ALTER TABLE t ADD COLUMN a text DEFAULT (blue)`
+	// exits 1 with "default value of column [a] is not constant". The old
+	// fallback wrapped any unrecognised value in parens, so this only surfaced
+	// at apply time — after the plan had been rendered and approved.
+	it('rejects a bare word instead of emitting DEFAULT (word)', () => {
+		expect(() => columnSql(col({ name: 'color', type: 'text', default: 'blue' }))).toThrow(
+			/is not constant/
+		)
+	})
+
+	it('names the quoted replacement in the message', () => {
+		expect(() => columnSql(col({ name: 'color', type: 'text', default: 'blue' }))).toThrow(
+			/default="'blue'"/
+		)
+	})
+
+	it('escapes an embedded quote in the suggestion', () => {
+		expect(() => columnSql(col({ name: 'c', type: 'text', default: "it's" }))).toThrow(
+			/default="'it''s'"/
+		)
+	})
+
+	it('rejects a bare emoji — the same class, not an encoding problem', () => {
+		expect(() => columnSql(col({ name: 'emoji', type: 'text', default: '👍🏻' }))).toThrow(
+			/is not constant/
+		)
+		expect(columnSql(col({ name: 'emoji', type: 'text', default: "'👍🏻'" }))).toContain(
+			"DEFAULT '👍🏻'"
+		)
+	})
+
+	it('still accepts literals, keywords and expressions', () => {
+		expect(columnSql(col({ name: 'n', type: 'integer', default: '0' }))).toContain('DEFAULT 0')
+		expect(columnSql(col({ name: 'n', type: 'real', default: '-1.5' }))).toContain('DEFAULT -1.5')
+		expect(columnSql(col({ name: 's', type: 'text', default: "'blue'" }))).toContain(
+			"DEFAULT 'blue'"
+		)
+		expect(columnSql(col({ name: 's', type: 'text', default: "'it''s'" }))).toContain(
+			"DEFAULT 'it''s'"
+		)
+		expect(columnSql(col({ name: 'b', type: 'integer', default: 'NULL' }))).toContain(
+			'DEFAULT NULL'
+		)
+		expect(columnSql(col({ name: 't', type: 'text', default: 'CURRENT_TIMESTAMP' }))).toContain(
+			'DEFAULT CURRENT_TIMESTAMP'
+		)
+		// A bare function call is parenthesised for the caller — the one
+		// unquoted form where the intent is unambiguous.
+		expect(columnSql(col({ name: 't', type: 'text', default: "datetime('now')" }))).toContain(
+			"DEFAULT (datetime('now'))"
+		)
+		expect(columnSql(col({ name: 't', type: 'text', default: "(datetime('now'))" }))).toContain(
+			"DEFAULT (datetime('now'))"
+		)
+	})
+})
+
 describe('TableResource.plan — drift reconciliation', () => {
 	const spec = getComponentSpec('@db-x/sqlite-library:table')
 	// The registry stores specs erased to Record<string, unknown>, so the plan

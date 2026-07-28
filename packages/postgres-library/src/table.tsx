@@ -238,17 +238,58 @@ export function buildCreateTable(props: { name: string; columns: ColumnSpec[] })
 	return `CREATE TABLE IF NOT EXISTS "${props.name}" (\n  ${colSqls.join(',\n  ')}\n)`
 }
 
-export function columnSql(c: ColumnSpec): string {
-	if (c.default !== undefined && c.default.trim() === '') {
+// The bare words Postgres accepts as a DEFAULT without quotes.
+const BARE_DEFAULTS = new Set([
+	'null',
+	'true',
+	'false',
+	'current_timestamp',
+	'current_date',
+	'current_time',
+	'current_user',
+	'session_user',
+	'localtimestamp',
+])
+
+/**
+ * Validate a `DEFAULT` clause and return it, or refuse.
+ *
+ * `default` is raw SQL, so a literal string has to carry its own quotes:
+ * `default="'blue'"`, not `default="blue"`. Unquoted, Postgres reads it as a
+ * column reference and fails at apply time with `column "blue" does not
+ * exist` — after the plan was rendered and approved. Refusing here keeps a
+ * statement that cannot run out of the plan, and names the replacement.
+ *
+ * Unlike SQLite this only validates; Postgres accepts a bare `now()` as a
+ * default, so there is nothing to rewrite.
+ */
+function checkDefault(name: string, value: string): string {
+	const trimmed = value.trim()
+	if (trimmed === '') {
 		throw new Error(
-			`<Column name="${c.name}" default="">: an empty default is not valid SQL. Use default="''" for an empty string, or omit the prop for no default.`
+			`<Column name="${name}" default="">: an empty default is not valid SQL. Use default="''" for an empty string, or omit the prop for no default.`
 		)
 	}
+	const ok =
+		/^-?\d+(\.\d+)?$/.test(trimmed) ||
+		/^'([^']|'')*'(::\w+)?$/.test(trimmed) ||
+		BARE_DEFAULTS.has(trimmed.toLowerCase()) ||
+		trimmed.includes('(')
+	if (!ok) {
+		throw new Error(
+			`<Column name="${name}" default="${value}">: this would emit DEFAULT ${trimmed}, which Postgres reads as a column reference and rejects — \`column "${trimmed}" does not exist\`. ` +
+				`\`default\` is raw SQL, so a literal string carries its own quotes: default="'${trimmed.replace(/'/g, "''")}'".`
+		)
+	}
+	return trimmed
+}
+
+export function columnSql(c: ColumnSpec): string {
 	const parts = [`"${c.name}"`, c.type]
 	if (c.primaryKey) parts.push('PRIMARY KEY')
 	if (c.notNull && !c.primaryKey) parts.push('NOT NULL')
 	if (c.unique && !c.primaryKey) parts.push('UNIQUE')
-	if (c.default !== undefined) parts.push(`DEFAULT ${c.default}`)
+	if (c.default !== undefined) parts.push(`DEFAULT ${checkDefault(c.name, c.default)}`)
 	return parts.join(' ')
 }
 
@@ -363,7 +404,7 @@ function alterColumnSql(tableName: string, next: ColumnSpec, prior: ColumnSpec):
 	if ((next.default ?? undefined) !== (prior.default ?? undefined)) {
 		stmts.push(
 			next.default !== undefined
-				? `${t} ALTER COLUMN ${col} SET DEFAULT ${next.default}`
+				? `${t} ALTER COLUMN ${col} SET DEFAULT ${checkDefault(next.name, next.default)}`
 				: `${t} ALTER COLUMN ${col} DROP DEFAULT`
 		)
 	}

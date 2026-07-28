@@ -23,7 +23,9 @@ A focused distribution on top of `@infra-x/runtime`:
 1. **Components.** `<Postgres>`, `<MySQL>`, `<Table>`, `<Column>`,
    `<Index>`, `<Extension>`, `<DbUser>`, `<SeedData>` —
    shipped as `@db-x/postgres-library`, `@db-x/mysql-library`, etc.
-2. **CLI.** `db-x preview | apply | destroy | snapshot | restore | history | diff | mcp | types`.
+2. **CLI.** Shipped today: `db-x preview | apply | refresh | destroy | state | describe | help`.
+   Planned: `snapshot | restore | history | diff` (time machine, [#6](https://github.com/rtorcato/db-x/issues/6)),
+   `mcp` ([#9](https://github.com/rtorcato/db-x/issues/9)), `types` ([#10](https://github.com/rtorcato/db-x/issues/10)).
 3. **Snapshot driver.** Pluggable: `pg_dump` for self-hosted Postgres,
    RDS / Cloud SQL snapshot APIs for managed.
 4. **Shadow-DB preview.** Spin an ephemeral copy, dry-run the DDL,

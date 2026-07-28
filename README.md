@@ -39,8 +39,10 @@ db-x destroy ./schema.tsx    # tear down in reverse order
 | Package | Description | License |
 |---|---|---|
 | [`@db-x/runtime`](./packages/runtime) | JSX runtime, `defineComponent` contract, reconciler, diff engine, state I/O | BSL-1.1 |
-| [`@db-x/cli`](./packages/cli) | The `db-x` binary — preview / apply / destroy / refresh / state / describe | BSL-1.1 |
+| [`@db-x/cli`](./packages/cli) | The `db-x` binary — preview / apply / refresh / destroy / state / describe / help | BSL-1.1 |
 | [`@db-x/postgres-library`](./packages/postgres-library) | Postgres schema components: `<DatabaseTarget>`, `<Postgres>`, `<Table>`, `<Column>`, `<Index>`, `<Extension>`, `<SeedData>`, `<DbUser>` | MIT |
+| [`@db-x/sqlite-library`](./packages/sqlite-library) | SQLite schema components: `<Sqlite>`, `<Table>`, `<Column>`, `<Index>`, `<SeedData>` | MIT |
+| [`@db-x/snapshot-pg-dump`](./packages/snapshot-pg-dump) | `pg_dump`-based `SnapshotDriver` — pre-flight snapshots for the schema time machine | MIT |
 
 ## Development
 
@@ -63,13 +65,16 @@ db-x preview ./dbx.tsx
 ```
 packages/runtime            @db-x/runtime            engine
 packages/cli                @db-x/cli                db-x binary
-packages/postgres-library   @db-x/postgres-library   schema components
+packages/postgres-library   @db-x/postgres-library   schema components (Postgres)
+packages/sqlite-library     @db-x/sqlite-library     schema components (SQLite)
+packages/snapshot-pg-dump   @db-x/snapshot-pg-dump   pg_dump snapshot driver
 apps/docs                   Docusaurus site (db-x.dev)
-examples/postgres       runnable demo schema
+examples/                   runnable demo schemas (postgres, sqlite, supabase)
 docs/                       GOALS.md (design), large-scale.md (design note)
 ```
 
 ## Licensing
 
-Two-license split: the engine (`@db-x/runtime`, `@db-x/cli`) is **BSL-1.1**;
-`@db-x/postgres-library` is **MIT**. See [`LICENSING.md`](./LICENSING.md).
+Two-license split: the engine (`@db-x/runtime`, `@db-x/cli`) is **BSL-1.1**; the
+libraries and snapshot driver (`@db-x/postgres-library`, `@db-x/sqlite-library`,
+`@db-x/snapshot-pg-dump`) are **MIT**. See [`LICENSING.md`](./LICENSING.md).

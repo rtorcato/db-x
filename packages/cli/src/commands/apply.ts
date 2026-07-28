@@ -1,6 +1,5 @@
 // `db-x apply <file>` — render JSX, diff, execute, persist.
 
-import path from 'node:path'
 import process from 'node:process'
 import * as p from '@clack/prompts'
 import {
@@ -10,15 +9,13 @@ import {
 	readState,
 	renderToGraph,
 	type SnapshotRef,
-	STATE_DIR,
 	writeState,
 } from '@db-x/runtime'
-import { createPgDumpDriver } from '@db-x/snapshot-pg-dump'
 import { type ProgressEvent, executePlan } from '../execute.js'
 import { loadJsxFile } from '../load-jsx.js'
 import { makeInteractiveLogger, makeLogger } from '../logger.js'
 import { filterByPhase, validatePhase } from '../phase-filter.js'
-import { planHasDestructive, resolveSnapshotConnection } from '../snapshot.js'
+import { createSnapshotDriver, planHasDestructive, resolveSnapshotTarget } from '../snapshot.js'
 import { failNonInteractive, isInteractive, makeSpinner as ttyMakeSpinner } from '../tty.js'
 import { actionColor, c } from '../ui.js'
 import { printPlan } from './preview.js'
@@ -119,19 +116,16 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 		// Pinned afterward to the resulting state revision.
 		let snapshotRef: SnapshotRef | null = null
 		if (!args.noSnapshot && planHasDestructive(plan)) {
-			const connection = resolveSnapshotConnection(state)
-			if (!connection) {
+			const target = resolveSnapshotTarget(state)
+			if (!target) {
 				throw new Error(
 					'Refusing destructive changes without a snapshot: no database connection found in state to snapshot. Re-run with --no-snapshot to proceed without one.'
 				)
 			}
 			const snap = makeSpinner()
-			snap.start('Snapshotting before destructive changes')
+			snap.start(`Snapshotting ${target.label} before destructive changes (${target.driver})`)
 			try {
-				const driver = createPgDumpDriver({
-					connection,
-					storeDir: path.join(args.workDir, STATE_DIR, 'snapshots'),
-				})
+				const driver = createSnapshotDriver(target, args.workDir)
 				snapshotRef = await driver.create(state.lastApplied ?? 'initial')
 				snap.stop(c.green(`Snapshot ${c.bold(snapshotRef.id)} captured`))
 			} catch (err) {

@@ -66,18 +66,21 @@ export const Mongo = defineComponent<MongoProps, MongoParentOutputs>({
 		ctx.log.info(`Mongo ready (database=${props.database}${props.protect ? ', protect=on' : ''})`)
 
 		return {
-			db: props.database,
+			database: props.database,
 			uri: props.url,
-			// Direct spawn, no wrapper — mongosh is the only tool this library
-			// invokes, unlike psql/pg_dump which differ by child component.
-			exec: { command: 'mongosh', args: [] },
+			// Pass-through wrapper: `env` runs whatever tool the consumer appends
+			// (`mongosh` for DDL, `mongodump` / `mongorestore` for snapshots).
+			// Mirrors `<DatabaseTarget>`; naming one tool as `command` would
+			// hardcode it.
+			exec: { command: 'env', args: [] },
+			snapshotDriver: 'mongodump',
 		}
 	},
 	destroy: async (state, ctx) => {
 		// We don't own the database server, and an empty Mongo database is not
 		// a thing that exists — dropping the collections (each `<Collection>`'s
 		// own destroy) is the whole teardown.
-		ctx.log.info(`Mongo ${state.outputs.db}: no-op destroy (server not owned)`)
+		ctx.log.info(`Mongo ${state.outputs.database}: no-op destroy (server not owned)`)
 	},
 	plan: (props, state): PlanAction => {
 		if (!state) return { type: 'create' }

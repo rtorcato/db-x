@@ -1,6 +1,6 @@
 import type { Plan, PlanAction, ResourceState, SnapshotRef, StateFile } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
-import { planHasDestructive, resolveSnapshotConnection, selectSnapshotId } from './snapshot.js'
+import { planHasDestructive, resolveSnapshotTarget, selectSnapshotId } from './snapshot.js'
 
 const diff = (id: string, action: PlanAction) => ({
 	id,
@@ -32,7 +32,7 @@ describe('planHasDestructive', () => {
 	})
 })
 
-describe('resolveSnapshotConnection', () => {
+describe('resolveSnapshotTarget', () => {
 	const res = (id: string, outputs: object): ResourceState => ({
 		id,
 		kind: `test:${id}`,
@@ -46,36 +46,72 @@ describe('resolveSnapshotConnection', () => {
 		resources: Object.fromEntries(records.map((r) => [r.id, r])),
 	})
 
-	const pgOutputs = {
-		user: 'app',
-		password: 's3cret',
-		database: 'appdb',
-		exec: { command: 'env', args: [], env: { PGHOST: 'db' } },
+	const exec = { command: 'env', args: [], env: { PGHOST: 'db' } }
+	const pgOutputs = { user: 'app', password: 's3cret', database: 'appdb', exec }
+	const taggedPg = { ...pgOutputs, snapshotDriver: 'pg-dump' }
+	const taggedMongo = {
+		database: 'todos',
+		uri: 'mongodb://u:p@localhost:27017/',
+		exec: { command: 'env', args: [] },
+		snapshotDriver: 'mongodump',
 	}
 
-	it('duck-types a Postgres-shaped resource into a connection', () => {
-		const conn = resolveSnapshotConnection(stateOf(res('db', pgOutputs)))
-		expect(conn).toEqual({
-			user: 'app',
-			password: 's3cret',
-			database: 'appdb',
-			exec: { command: 'env', args: [], env: { PGHOST: 'db' } },
-		})
+	it('picks the driver from the snapshotDriver tag', () => {
+		expect(resolveSnapshotTarget(stateOf(res('db', taggedPg)))?.driver).toBe('pg-dump')
+		expect(resolveSnapshotTarget(stateOf(res('db', taggedMongo)))?.driver).toBe('mongodump')
+	})
+
+	it('never resolves a tagged Mongo connection to pg-dump', () => {
+		// The bug this replaces: duck-typing would have matched anything with
+		// {user, password, database, exec} and shelled out to pg_dump.
+		const target = resolveSnapshotTarget(
+			stateOf(res('mongo', { ...taggedMongo, user: 'u', password: 'p' }))
+		)
+		expect(target?.driver).toBe('mongodump')
+	})
+
+	it('prefers a tagged resource over an untagged Postgres-shaped one', () => {
+		const target = resolveSnapshotTarget(stateOf(res('legacy', pgOutputs), res('m', taggedMongo)))
+		expect(target?.driver).toBe('mongodump')
+	})
+
+	it('falls back to the legacy Postgres shape when nothing is tagged', () => {
+		const target = resolveSnapshotTarget(stateOf(res('db', pgOutputs)))
+		expect(target?.driver).toBe('pg-dump')
+		expect(target?.outputs.database).toBe('appdb')
 	})
 
 	it('skips resources missing connection fields, returns the first full match', () => {
-		const conn = resolveSnapshotConnection(
+		const target = resolveSnapshotTarget(
 			stateOf(res('table', { columns: [] }), res('db', pgOutputs))
 		)
-		expect(conn?.database).toBe('appdb')
+		expect(target?.outputs.database).toBe('appdb')
+	})
+
+	it('ignores an unknown driver tag rather than trusting it', () => {
+		const target = resolveSnapshotTarget(
+			stateOf(res('weird', { database: 'd', exec, snapshotDriver: 'rsync-and-pray' }))
+		)
+		expect(target).toBeNull()
+	})
+
+	it('ignores a tagged resource with no usable exec template', () => {
+		expect(
+			resolveSnapshotTarget(
+				stateOf(res('m', { database: 'd', uri: 'x', snapshotDriver: 'mongodump' }))
+			)
+		).toBeNull()
 	})
 
 	it('returns null when no resource carries a full connection', () => {
-		expect(resolveSnapshotConnection(stateOf(res('table', { columns: [] })))).toBeNull()
+		expect(resolveSnapshotTarget(stateOf(res('table', { columns: [] })))).toBeNull()
 		// exec present but no creds
-		expect(
-			resolveSnapshotConnection(stateOf(res('half', { exec: { command: 'env', args: [] } })))
-		).toBeNull()
+		expect(resolveSnapshotTarget(stateOf(res('half', { exec })))).toBeNull()
+	})
+
+	it('labels a Postgres target with user, a Mongo target with the database', () => {
+		expect(resolveSnapshotTarget(stateOf(res('db', taggedPg)))?.label).toBe('appdb as app')
+		expect(resolveSnapshotTarget(stateOf(res('m', taggedMongo)))?.label).toBe('todos')
 	})
 })
 

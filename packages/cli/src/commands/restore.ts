@@ -1,16 +1,15 @@
 // `db-x restore [--snapshot <id>]` — roll the database back to a captured snapshot.
 //
-// Uses the pre-flight `pg_dump` snapshots `apply` takes before destructive DDL
-// (#7). No JSX file is needed: the database connection and the snapshot pin both
-// live in `.dbx/` (state + the snapshot store), so restore works purely from
-// what's on disk. Restoring overwrites the live schema, so it's gated like
-// `destroy` — confirm + `--yes`, under the state lock.
+// Uses the pre-flight snapshots `apply` takes before destructive changes (#7),
+// through whichever driver captured them (#78). No JSX file is needed: the
+// database connection and the snapshot pin both live in `.dbx/` (state + the
+// snapshot store), so restore works purely from what's on disk. Restoring
+// overwrites the live schema, so it's gated like `destroy` — confirm +
+// `--yes`, under the state lock.
 
-import path from 'node:path'
 import * as p from '@clack/prompts'
-import { acquireLock, readState, STATE_DIR } from '@db-x/runtime'
-import { createPgDumpDriver } from '@db-x/snapshot-pg-dump'
-import { resolveSnapshotConnection, selectSnapshotId } from '../snapshot.js'
+import { acquireLock, readState } from '@db-x/runtime'
+import { createSnapshotDriver, resolveSnapshotTarget, selectSnapshotId } from '../snapshot.js'
 import { failNonInteractive, isInteractive, makeSpinner as ttyMakeSpinner } from '../tty.js'
 import { c } from '../ui.js'
 
@@ -32,17 +31,14 @@ export async function restoreCommand(args: RestoreArgs): Promise<void> {
 		return
 	}
 
-	const connection = resolveSnapshotConnection(state)
-	if (!connection) {
+	const target = resolveSnapshotTarget(state)
+	if (!target) {
 		throw new Error(
-			'No snapshot-capable database connection found in state — restore needs a <Postgres>/<DatabaseTarget> in .dbx/state.json.'
+			'No snapshot-capable database connection found in state — restore needs a database component (e.g. <Postgres> or <Mongo>) in .dbx/state.json.'
 		)
 	}
 
-	const driver = createPgDumpDriver({
-		connection,
-		storeDir: path.join(args.workDir, STATE_DIR, 'snapshots'),
-	})
+	const driver = createSnapshotDriver(target, args.workDir)
 
 	const available = await driver.list() // newest first
 	if (available.length === 0) {
@@ -67,7 +63,7 @@ export async function restoreCommand(args: RestoreArgs): Promise<void> {
 			`state rev   ${ref.stateRev}`,
 			`captured    ${ref.createdAt}`,
 			`mode        ${ref.mode} (${ref.driver})`,
-			`into        ${connection.database} as ${connection.user}`,
+			`into        ${target.label}`,
 		].join('\n'),
 		c.yellow('restore')
 	)
@@ -79,7 +75,7 @@ export async function restoreCommand(args: RestoreArgs): Promise<void> {
 			)
 		}
 		const ok = await p.confirm({
-			message: `${c.red('Restore')} overwrites the live schema in ${c.bold(connection.database)} from ${c.bold(ref.id)}. Continue?`,
+			message: `${c.red('Restore')} overwrites the live schema in ${c.bold(target.label)} from ${c.bold(ref.id)}. Continue?`,
 			initialValue: false,
 		})
 		if (p.isCancel(ok) || !ok) {

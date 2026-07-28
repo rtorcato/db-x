@@ -20,6 +20,13 @@ export interface PostgresParentOutputs {
 	database: string
 	/** Spawn template forwarded from the runtime parent (DatabaseTarget, Service, etc.). */
 	exec: RuntimeExec
+	/**
+	 * Which `SnapshotDriver` can capture this database (#78). The CLI reads the
+	 * tag rather than duck-typing the connection record. Optional so state
+	 * written before the tag existed still resolves — the CLI falls back to the
+	 * legacy shape match.
+	 */
+	snapshotDriver?: 'pg-dump'
 }
 
 /**

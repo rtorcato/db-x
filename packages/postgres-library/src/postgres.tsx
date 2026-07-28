@@ -61,6 +61,7 @@ export const Postgres = defineComponent<PostgresProps, PostgresParentOutputs>({
 			password,
 			database,
 			exec: runtime.exec,
+			snapshotDriver: 'pg-dump',
 		}
 	},
 	destroy: async (state, ctx) => {

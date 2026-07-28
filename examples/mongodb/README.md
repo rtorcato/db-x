@@ -47,12 +47,15 @@ The bundled [`docker-compose.yml`](./docker-compose.yml) provides the server on
 
 ## Known limitations
 
-- **Destructive changes cannot be snapshotted.** `db-x apply` takes a
-  pre-flight snapshot via `pg_dump`, which cannot dump Mongo. Dropping an index
-  or tightening the validator therefore **refuses to apply** rather than
-  risking an unrecoverable change. A `mongodump` driver is tracked in
-  [#42](https://github.com/rtorcato/db-x/issues/42). The `<Mongo protect>` in
-  `schema.tsx` blocks those changes anyway — remove it from the JSX to proceed.
+- **Snapshots need `mongodump` / `mongorestore` on PATH.** Dropping an index or
+  tightening the validator is a destructive change, so `db-x apply` captures a
+  pre-flight snapshot first (via
+  [`@db-x/snapshot-mongodump`](../../packages/snapshot-mongodump)) and
+  `db-x restore` rolls it back. The
+  [Database Tools](https://www.mongodb.com/docs/database-tools/) are a separate
+  install from the server and from `mongosh`. Note the `<Mongo protect>` in
+  `schema.tsx` blocks destructive changes regardless — remove it from the JSX to
+  proceed.
 - **Credentials appear in `ps`.** mongosh has no `PGPASSWORD` equivalent. DB-X
   masks the password in its own output only.
 

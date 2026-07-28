@@ -3,13 +3,16 @@
   "version": "0.1.0-alpha.0",
   "license": "BUSL-1.1",
   "type": "module",
-  "description": "The db-x CLI — preview, apply, destroy, refresh, state.",
+  "description": "The db-x CLI \u2014 preview, apply, destroy, refresh, state.",
   "bin": {
     "db-x": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
@@ -19,6 +22,7 @@
   "dependencies": {
     "@clack/prompts": "^0.7.0",
     "@db-x/runtime": "workspace:*",
+    "@db-x/snapshot-mongodump": "workspace:*",
     "@db-x/snapshot-pg-dump": "workspace:*",
     "picocolors": "^1.0.1",
     "tsx": "^4.19.0"

@@ -72,7 +72,7 @@ insert into todos (user_id, title) values ('<that-id>', 'try the db-x supabase d
 
 ## Configuration
 
-Connection settings live in [`.env.example`](./.env.example). `dbx.tsx` has **no
+Connection settings live in [`.env.example`](./.env.example). `config.ts` has **no
 hardcoded credentials** — it reads everything from env vars, loaded from:
 
 1. `examples/supabase/.env` — gitignored, your local overrides.

@@ -84,14 +84,16 @@ subset check.
 
 ## Known gaps
 
-- **No snapshots.** `db-x apply` snapshots via `pg_dump` before destructive
-  changes, which cannot dump Mongo. `<Mongo>` deliberately does not advertise
-  the connection shape the CLI duck-types, so a destructive apply *refuses*
-  ("no connection found to snapshot") rather than shelling out to the wrong
-  tool. A `mongodump`-backed driver is the fix ([#42](https://github.com/rtorcato/db-x/issues/42)).
-- **Credentials in `ps`.** mongosh has no `PGPASSWORD` equivalent, so a URI
-  with an inline password is visible in the process list while a command runs.
-  DB-X masks it in its own logs and errors. Prefer X.509 / AWS IAM auth on a
-  shared host.
+- **Snapshots need the MongoDB Database Tools.** `<Mongo>` publishes
+  `snapshotDriver: 'mongodump'`, so `db-x apply` captures a pre-flight snapshot
+  via [`@db-x/snapshot-mongodump`](../snapshot-mongodump) before any destructive
+  change, and `db-x restore` rolls it back. Both need `mongodump` and
+  `mongorestore` on `PATH` — a separate install from the server and from
+  `mongosh`. Mongo snapshots are always full (documents included): a
+  collection's indexes and validator cannot be captured without them.
+- **Credentials in `ps`.** mongosh and the database tools have no `PGPASSWORD`
+  equivalent, so a URI with an inline password is visible in the process list
+  while a command runs. DB-X masks it in its own logs and errors. Prefer X.509 /
+  AWS IAM auth on a shared host.
 - **Collections only.** No views, no time-series collections, no sharding
   keys, no users/roles.

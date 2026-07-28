@@ -36,6 +36,7 @@ license applies to which package.
 | `packages/sqlite-library` | `@db-x/sqlite-library` |
 | `packages/mongodb-library` | `@db-x/mongodb-library` |
 | `packages/snapshot-pg-dump` | `@db-x/snapshot-pg-dump` |
+| `packages/snapshot-mongodump` | `@db-x/snapshot-mongodump` |
 
 Examples under `examples/` and the docs site under `apps/docs` are unpublished
 and MIT for reference use.

@@ -12,22 +12,27 @@ import type { Ctx, CtxLogger, RuntimeExec } from '@db-x/runtime'
 
 /**
  * Outputs a `<Mongo>` resource emits — read by child components
- * (`<Collection>`, `<SeedData>`, …) via `ctx.deps[parentId]`.
- *
- * The database field is deliberately named `db`, not `database`: the CLI's
- * `resolveSnapshotConnection` duck-types `{user, password, database, exec}` to
- * find something to `pg_dump`, and a Mongo connection is not dumpable by
- * pg_dump. Staying off that shape makes `db-x apply` refuse a destructive
- * change here ("no connection found to snapshot") instead of shelling out to
- * the wrong tool. Lands properly with a mongodump driver (#42).
+ * (`<Collection>`, `<SeedData>`, …) via `ctx.deps[parentId]`, and by the CLI
+ * to pick a snapshot driver.
  */
 export interface MongoParentOutputs {
 	/** Database the schema is applied to. Always addressed explicitly. */
-	db: string
-	/** Full connection URI, passed through to mongosh verbatim. */
+	database: string
+	/** Full connection URI, passed through to the mongo tools verbatim. */
 	uri: string
-	/** Spawn template — `mongosh`, or a wrapper that can reach it. */
+	/**
+	 * Spawn template. A *wrapper* prefix that a consumer appends its tool to —
+	 * `mongosh` here, `mongodump` / `mongorestore` in the snapshot driver.
+	 * Naming the tool as `command` would hardcode it: `spawn('mongosh',
+	 * ['mongodump', …])` launches mongosh, not mongodump.
+	 */
 	exec: RuntimeExec
+	/**
+	 * Which `SnapshotDriver` can capture this database (#78). The CLI reads the
+	 * tag instead of duck-typing a Postgres-shaped connection record, so it
+	 * never points `pg_dump` at MongoDB.
+	 */
+	snapshotDriver: 'mongodump'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,7 +53,12 @@ export function findMongoParent(ctx: Ctx): MongoParentOutputs | null {
 	const parentId = ctx.resource.parent
 	if (!parentId) return null
 	const outputs = ctx.deps[parentId] as Partial<MongoParentOutputs> | undefined
-	if (!outputs?.db || !outputs.uri || !outputs.exec?.command || !Array.isArray(outputs.exec.args)) {
+	if (
+		!outputs?.database ||
+		!outputs.uri ||
+		!outputs.exec?.command ||
+		!Array.isArray(outputs.exec.args)
+	) {
 		return null
 	}
 	return outputs as MongoParentOutputs
@@ -74,10 +84,16 @@ export function wrapScript(db: string, js: string): string {
  * turns into a rejected promise — the `ON_ERROR_STOP=1` equivalent.
  */
 export async function runJs(parent: MongoParentOutputs, js: string, ctx: Ctx): Promise<void> {
-	// The tool itself is `exec.command` (like sqlite3, unlike the psql/pg_dump
-	// split where the parent publishes a wrapper prefix) — mongosh is the only
-	// binary this library ever invokes.
-	const args = [...parent.exec.args, parent.uri, '--quiet', '--eval', wrapScript(parent.db, js)]
+	// `exec` is a wrapper prefix, so the tool goes in the args — the snapshot
+	// driver appends `mongodump` / `mongorestore` to the same prefix.
+	const args = [
+		...parent.exec.args,
+		'mongosh',
+		parent.uri,
+		'--quiet',
+		'--eval',
+		wrapScript(parent.database, js),
+	]
 	await spawnCommand(parent.exec.command, args, {
 		cwd: parent.exec.cwd ?? ctx.workDir,
 		log: ctx.log,

@@ -28,11 +28,13 @@ license applies to which package.
 | `packages/runtime` | `@db-x/runtime` |
 | `packages/cli` | `@db-x/cli` |
 
-### MIT — component library
+### MIT — component libraries + snapshot driver
 
 | Path | Package |
 |---|---|
 | `packages/postgres-library` | `@db-x/postgres-library` |
+| `packages/sqlite-library` | `@db-x/sqlite-library` |
+| `packages/snapshot-pg-dump` | `@db-x/snapshot-pg-dump` |
 
 Examples under `examples/` and the docs site under `apps/docs` are unpublished
 and MIT for reference use.

@@ -1,0 +1,21 @@
+{
+  "name": "@db-x-examples/cockroachdb",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DB-X demo: a todos schema applied to CockroachDB via <DatabaseTarget> — CockroachDB rides @db-x/postgres-library (pg wire protocol), no new library.",
+  "scripts": {
+    "preview": "db-x preview ./dbx.tsx",
+    "apply": "db-x apply ./dbx.tsx",
+    "destroy": "db-x destroy ./dbx.tsx"
+  },
+  "dependencies": {
+    "@db-x/postgres-library": "workspace:*",
+    "@db-x/runtime": "workspace:*",
+    "@rtorcato/js-common": "^2.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@db-x/cli": "workspace:*"
+  }
+}

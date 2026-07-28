@@ -69,7 +69,7 @@ packages/postgres-library   @db-x/postgres-library   schema components (Postgres
 packages/sqlite-library     @db-x/sqlite-library     schema components (SQLite)
 packages/snapshot-pg-dump   @db-x/snapshot-pg-dump   pg_dump snapshot driver
 apps/docs                   Docusaurus site (db-x.dev)
-examples/                   runnable demo schemas (postgres, sqlite, supabase)
+examples/                   runnable demo schemas (postgres, sqlite, supabase, cockroachdb)
 docs/                       GOALS.md (design), large-scale.md (design note)
 ```
 

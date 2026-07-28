@@ -39,7 +39,7 @@ db-x destroy ./schema.tsx    # tear down in reverse order
 | Package | Description | License |
 |---|---|---|
 | [`@db-x/runtime`](./packages/runtime) | JSX runtime, `defineComponent` contract, reconciler, diff engine, state I/O | BSL-1.1 |
-| [`@db-x/cli`](./packages/cli) | The `db-x` binary — preview / apply / refresh / destroy / state / describe / help | BSL-1.1 |
+| [`@db-x/cli`](./packages/cli) | The `db-x` binary — preview / apply / refresh / destroy / restore / state / describe / help | BSL-1.1 |
 | [`@db-x/postgres-library`](./packages/postgres-library) | Postgres schema components: `<DatabaseTarget>`, `<Postgres>`, `<Table>`, `<Column>`, `<Index>`, `<Extension>`, `<SeedData>`, `<DbUser>` | MIT |
 | [`@db-x/sqlite-library`](./packages/sqlite-library) | SQLite schema components: `<Sqlite>`, `<Table>`, `<Column>`, `<Index>`, `<SeedData>` | MIT |
 | [`@db-x/snapshot-pg-dump`](./packages/snapshot-pg-dump) | `pg_dump`-based `SnapshotDriver` — pre-flight snapshots for the schema time machine | MIT |

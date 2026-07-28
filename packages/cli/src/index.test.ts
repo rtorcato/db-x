@@ -108,6 +108,24 @@ describe('parseArgs', () => {
 		})
 	})
 
+	describe('--snapshot flag', () => {
+		it('defaults to undefined', () => {
+			expect(parseArgs(argv('restore')).snapshot).toBeUndefined()
+		})
+
+		it('parses --snapshot=<id>', () => {
+			expect(parseArgs(argv('restore', '--snapshot=snap-123')).snapshot).toBe('snap-123')
+		})
+
+		it('parses --snapshot <id> as two args', () => {
+			expect(parseArgs(argv('restore', '--snapshot', 'snap-123')).snapshot).toBe('snap-123')
+		})
+
+		it('does not consume the next arg when --snapshot is the last token', () => {
+			expect(parseArgs(argv('restore', '--snapshot')).snapshot).toBeUndefined()
+		})
+	})
+
 	describe('--json', () => {
 		it('is accepted as a no-op (does not become a positional)', () => {
 			const parsed = parseArgs(argv('describe', './infra.tsx', '--json'))

@@ -12,6 +12,21 @@ import { createMongodumpDriver } from '@db-x/snapshot-mongodump'
 import { createPgDumpDriver } from '@db-x/snapshot-pg-dump'
 import { createSqliteDriver } from '@db-x/snapshot-sqlite'
 
+/**
+ * How many snapshots the store keeps. Artifacts are whole-database copies
+ * (a `.db` file, a full `pg_dump`), so a store nothing ever removes is a
+ * disk-space leak that grows with every destructive apply.
+ *
+ * Applied only after a successful apply that captured a new snapshot, and
+ * newest-first — so the ref pinned to the current state revision is always
+ * among those kept, and `restore` never loses its default target.
+ *
+ * ponytail: fixed keep-last. A `--keep-snapshots <n>` flag or a per-database
+ * prop is the upgrade path if anyone needs a different depth or an age-based
+ * policy.
+ */
+export const SNAPSHOT_KEEP_LAST = 5
+
 /** True if any planned action performs a destructive change (DROP, TYPE narrow, …). */
 export function planHasDestructive(plan: Plan): boolean {
 	return plan.actions.some((a) => {

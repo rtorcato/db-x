@@ -8,6 +8,7 @@ import {
 	plan as makePlan,
 	readState,
 	renderToGraph,
+	type SnapshotDriver,
 	type SnapshotRef,
 	writeState,
 } from '@db-x/runtime'
@@ -15,7 +16,12 @@ import { type ProgressEvent, executePlan } from '../execute.js'
 import { loadJsxFile } from '../load-jsx.js'
 import { makeInteractiveLogger, makeLogger } from '../logger.js'
 import { filterByPhase, validatePhase } from '../phase-filter.js'
-import { createSnapshotDriver, planHasDestructive, resolveSnapshotTarget } from '../snapshot.js'
+import {
+	SNAPSHOT_KEEP_LAST,
+	createSnapshotDriver,
+	planHasDestructive,
+	resolveSnapshotTarget,
+} from '../snapshot.js'
 import { failNonInteractive, isInteractive, makeSpinner as ttyMakeSpinner } from '../tty.js'
 import { actionColor, block, c } from '../ui.js'
 import { printPlan } from './preview.js'
@@ -115,6 +121,7 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 		// Snapshot before any destructive DDL so a bad apply is recoverable (#7).
 		// Pinned afterward to the resulting state revision.
 		let snapshotRef: SnapshotRef | null = null
+		let snapshotDriver: SnapshotDriver | null = null
 		if (!args.noSnapshot && planHasDestructive(plan)) {
 			const target = resolveSnapshotTarget(state)
 			if (!target) {
@@ -125,8 +132,8 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 			const snap = makeSpinner()
 			snap.start(`Snapshotting ${target.label} before destructive changes (${target.driver})`)
 			try {
-				const driver = createSnapshotDriver(target, args.workDir)
-				snapshotRef = await driver.create(state.lastApplied ?? 'initial')
+				snapshotDriver = createSnapshotDriver(target, args.workDir)
+				snapshotRef = await snapshotDriver.create(state.lastApplied ?? 'initial')
 				snap.stop(c.green(`Snapshot ${c.bold(snapshotRef.id)} captured`))
 			} catch (err) {
 				snap.stop(c.red('Snapshot failed'))
@@ -146,6 +153,28 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 		if (snapshotRef) updated.snapshot = snapshotRef.id
 		await writeState(args.workDir, updated)
 		exec.stop(c.green('Apply complete'))
+
+		// Retention runs only after the new ref is pinned in state: a failed apply
+		// keeps every artifact, and the pinned ref — always the newest, since one
+		// is captured per destructive apply — survives any keepLast >= 1.
+		// Never fatal. The apply already succeeded and state is on disk; failing
+		// here would report a successful deployment as a failure. Leftover
+		// artifacts cost disk, not correctness.
+		if (snapshotDriver) {
+			try {
+				const removed = await snapshotDriver.prune({ keepLast: SNAPSHOT_KEEP_LAST })
+				if (removed.length > 0) {
+					p.log.info(
+						`Pruned ${removed.length} old snapshot(s), keeping the newest ${SNAPSHOT_KEEP_LAST}.`
+					)
+				}
+			} catch (err) {
+				p.log.warn(
+					`Snapshot prune failed — old artifacts remain in .dbx/snapshots: ${(err as Error).message}`
+				)
+			}
+		}
+
 		p.outro(`${c.green('✔')} ${meaningful.length} change(s) applied.`)
 
 		const urls = Object.values(updated.resources)

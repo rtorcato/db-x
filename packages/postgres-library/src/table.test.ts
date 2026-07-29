@@ -65,7 +65,7 @@ describe('diffTable — columns & renames', () => {
 	})
 
 	it('ignores `from` when the prior column does not exist', () => {
-		const next = [col({ name: 'title', from: 'oldname', type: 'citext' })]
+		const next = [idCol, col({ name: 'title', from: 'oldname', type: 'citext' })]
 		const diff = diffTable('todos', next, [], prior([idCol]))
 		expect(diff.renames).toEqual([])
 		expect(diff.additions).toEqual([])
@@ -182,6 +182,34 @@ describe('diffTable — indexes', () => {
 		)
 		expect(diff.droppedIndexes).toEqual([])
 		expect(diff.sql).toEqual([])
+	})
+})
+
+describe('diffTable — dropped columns', () => {
+	// The bug: a column removed from the JSX vanished from the plan entirely —
+	// no SQL, no `destructive` entry, no warning, and it survived in the DB.
+	it('emits DROP COLUMN, flagged destructive, for a column no longer declared', () => {
+		const diff = diffTable('todos', [idCol], [], prior([idCol, col({ name: 'priority' })]))
+		expect(diff.droppedColumns).toEqual(['priority'])
+		expect(diff.sql).toEqual(['ALTER TABLE "todos" DROP COLUMN IF EXISTS "priority"'])
+		expect(diff.destructive).toEqual(['ALTER TABLE "todos" DROP COLUMN IF EXISTS "priority"'])
+	})
+
+	it('does not drop the source column of a rename', () => {
+		const next = [idCol, col({ name: 'title', from: 'name' })]
+		const diff = diffTable('todos', next, [], prior([idCol, col({ name: 'name' })]))
+		expect(diff.droppedColumns).toEqual([])
+		expect(diff.sql).toEqual(['ALTER TABLE "todos" RENAME COLUMN "name" TO "title"'])
+	})
+
+	it('drops the column last, after any index drop', () => {
+		const idx: IndexSpec = { name: 'idx_b', columns: ['b'] }
+		const a = col({ name: 'a', type: 'int' })
+		const diff = diffTable('t', [a], [], prior([a, col({ name: 'b' })], [idx]))
+		expect(diff.sql).toEqual([
+			'DROP INDEX IF EXISTS "idx_b"',
+			'ALTER TABLE "t" DROP COLUMN IF EXISTS "b"',
+		])
 	})
 })
 

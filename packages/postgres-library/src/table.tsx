@@ -162,9 +162,7 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 			if (diff.sql.length === 0) {
 				ctx.log.info(`Table ${props.name} unchanged`)
 			} else {
-				ctx.log.info(
-					`Table ${props.name}: ${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.alterations.length} alter(s), ${diff.droppedIndexes.length} index drop(s)`
-				)
+				ctx.log.info(`Table ${props.name}: ${summarize(diff)}`)
 				await runSql(parent, user, database, diff.sql.join(';\n'), ctx)
 			}
 		}
@@ -219,10 +217,7 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 				? { type: 'no-op' }
 				: { type: 'update', reason: 'props changed' }
 		}
-		const reason =
-			diff.sql.length > 0
-				? `${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.alterations.length} alter(s), ${diff.droppedIndexes.length} index drop(s)`
-				: 'props changed'
+		const reason = summarize(diff)
 		return diff.destructive.length > 0
 			? { type: 'update', reason, destructive: diff.destructive, details: diff.sql }
 			: { type: 'update', reason, details: diff.sql }
@@ -310,6 +305,8 @@ export interface TableDiff {
 	alterations: Array<{ column: string; sql: string[] }>
 	/** Names of indexes present in prior state but no longer declared. */
 	droppedIndexes: string[]
+	/** Names of columns present in prior state but no longer declared. */
+	droppedColumns: string[]
 	/** SQL statements in apply order. */
 	sql: string[]
 	/**
@@ -318,6 +315,15 @@ export interface TableDiff {
 	 * DROPs (DROP DEFAULT / DROP NOT NULL) are not included.
 	 */
 	destructive: string[]
+}
+
+/** One-line diff summary, shared by the apply log and the plan reason. */
+function summarize(diff: TableDiff): string {
+	return (
+		`${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ` +
+		`${diff.alterations.length} alter(s), ${diff.droppedIndexes.length} index drop(s), ` +
+		`${diff.droppedColumns.length} column drop(s)`
+	)
 }
 
 /** A statement that drops a schema object or can lose/coerce existing data. */
@@ -371,11 +377,20 @@ export function diffTable(
 	const nextIndexNames = new Set(nextIndexes.map((i) => i.name))
 	const droppedIndexes = prior.indexes.filter((i) => !nextIndexNames.has(i.name)).map((i) => i.name)
 
+	// 5. Removed columns — in prior state, no longer declared, and not the
+	//    source side of a rename (that column lives on under its new name).
+	const nextNames = new Set(next.map((c) => c.name))
+	const renameSources = new Set(renames.map((c) => c.from as string))
+	const droppedColumns = prior.columns
+		.filter((c) => !nextNames.has(c.name) && !renameSources.has(c.name))
+		.map((c) => c.name)
+
 	const sql: string[] = [
 		...renames.map((c) => `ALTER TABLE "${tableName}" RENAME COLUMN "${c.from}" TO "${c.name}"`),
 		...additions.map((c) => `ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS ${columnSql(c)}`),
 		...alterations.flatMap((a) => a.sql),
 		...droppedIndexes.map((n) => `DROP INDEX IF EXISTS "${n}"`),
+		...droppedColumns.map((n) => `ALTER TABLE "${tableName}" DROP COLUMN IF EXISTS "${n}"`),
 	]
 
 	return {
@@ -383,6 +398,7 @@ export function diffTable(
 		additions,
 		alterations,
 		droppedIndexes,
+		droppedColumns,
 		sql,
 		destructive: sql.filter(isDestructiveSql),
 	}

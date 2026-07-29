@@ -16,6 +16,7 @@ export function TodosSchema() {
 				<Column name="title" type="text" notNull />
 				<Column name="done" type="integer" notNull default="0" />
 				<Column name="color" type="text" default="'blue'" />
+				<Column name="dueDate" type="text" default="''" />
 				<Column name="priority" type="integer" notNull default="0" />
 				<Column name="created_at" type="text" notNull default="(datetime('now'))" />
 				<Index name="idx_todos_done" columns={['done']} />
@@ -35,14 +36,15 @@ export function TodosSchema() {
 				name="initial-todos"
 				description="Demo rows for first-run local installs"
 				sql={`
-          INSERT INTO todos (id, title, done, color, priority) VALUES
-            (1, 'try the db-x demo', 1, 'blue', 0),
-            (2, 'read the README', 0, 'green', 1),
-            (3, 'ship the sqlite-library MVP', 0, 'red', 2)
+          INSERT INTO todos (id, title, done, color, dueDate, priority) VALUES
+            (1, 'try the db-x demo', 1, 'blue', '', 0),
+            (2, 'read the README', 0, 'green', '', 1),
+            (3, 'ship the sqlite-library MVP', 0, 'red', '', 2)
           ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             done = excluded.done,
             color = excluded.color,
+            dueDate = excluded.dueDate,
             priority = excluded.priority
         `}
 			/>

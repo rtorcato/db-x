@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import { COMMANDS, isEntrypoint, parseArgs } from './index.js'
+import { promises as fs } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+	COMMANDS,
+	DEFAULT_FILE,
+	conventionalFile,
+	isEntrypoint,
+	parseArgs,
+	resolveFile,
+} from './index.js'
 
 // parseArgs is the CLI's contract surface. Tests below pin the behavior
 // against the documented forms in index.ts:
@@ -181,5 +191,50 @@ describe('isEntrypoint', () => {
 				throw new Error('ENOENT')
 			})
 		).toBe(false)
+	})
+})
+
+// `dbx.tsx` in the working directory is the entry every example and scaffold
+// uses, so the commands take it without an argument. These drive the real
+// filesystem against a temp dir — both cases return before any prompt, so they
+// stay deterministic in the non-TTY test runner.
+describe('conventionalFile / resolveFile default', () => {
+	let dir: string
+
+	beforeEach(async () => {
+		dir = await fs.mkdtemp(path.join(os.tmpdir(), 'db-x-default-'))
+	})
+
+	afterEach(async () => {
+		await fs.rm(dir, { recursive: true, force: true })
+	})
+
+	it('finds dbx.tsx in the working directory', async () => {
+		const entry = path.join(dir, DEFAULT_FILE)
+		await fs.writeFile(entry, 'export default null\n')
+		expect(await conventionalFile(dir)).toBe(entry)
+	})
+
+	it('is null when the directory has no dbx.tsx', async () => {
+		await fs.writeFile(path.join(dir, 'other.tsx'), 'export default null\n')
+		expect(await conventionalFile(dir)).toBeNull()
+	})
+
+	it('ignores a *directory* named dbx.tsx', async () => {
+		await fs.mkdir(path.join(dir, DEFAULT_FILE))
+		expect(await conventionalFile(dir)).toBeNull()
+	})
+
+	it('resolveFile falls back to dbx.tsx when no file is given', async () => {
+		const entry = path.join(dir, DEFAULT_FILE)
+		await fs.writeFile(entry, 'export default null\n')
+		expect(await resolveFile(null, dir, 'apply')).toBe(entry)
+	})
+
+	it('resolveFile still prefers an explicit path over the default', async () => {
+		await fs.writeFile(path.join(dir, DEFAULT_FILE), 'export default null\n')
+		const explicit = path.join(dir, 'other.tsx')
+		await fs.writeFile(explicit, 'export default null\n')
+		expect(await resolveFile(explicit, dir, 'apply')).toBe(explicit)
 	})
 })

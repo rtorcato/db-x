@@ -74,7 +74,7 @@ what it finds back into state, so the next `preview` plans the repair.
 ```sh
 sqlite3 todos.db "alter table todos drop column priority;"   # out-of-band change
 
-pnpm exec db-x refresh ./dbx.tsx   # ~ table:todos  drift: columns
+pnpm exec db-x refresh             # ~ table:todos  drift: columns
 pnpm preview                       # → ALTER TABLE "todos" ADD COLUMN "priority" ...
 pnpm apply --yes                   # column restored
 ```

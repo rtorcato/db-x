@@ -5,10 +5,10 @@
   "type": "module",
   "description": "DB-X demo: a todos collection, indexes and JSON Schema validator applied to MongoDB via <Mongo> — the document-store model, not <Table>/<Column>.",
   "scripts": {
-    "preview": "db-x preview ./dbx.tsx",
-    "apply": "db-x apply ./dbx.tsx",
+    "preview": "db-x preview",
+    "apply": "db-x apply",
     "restore": "db-x restore",
-    "destroy": "db-x destroy ./dbx.tsx"
+    "destroy": "db-x destroy"
   },
   "dependencies": {
     "@db-x/mongodb-library": "workspace:*",

@@ -3,6 +3,7 @@
 //
 // Argument parsing is intentionally small. Supported forms:
 //   db-x <command> [file] [--yes|-y]
+//   db-x <command>        → uses ./dbx.tsx when it exists
 //   db-x                  → interactive menu
 //   db-x help             → colored help screen
 
@@ -19,6 +20,13 @@ import { restoreCommand } from './commands/restore.js'
 import { stateCommand } from './commands/state.js'
 import { failNonInteractive, isInteractive } from './tty.js'
 import { banner, c } from './ui.js'
+
+/**
+ * The entry file a command falls back to when none is given. Every example and
+ * scaffold names its entry `dbx.tsx`, so repeating it in each npm script was
+ * pure noise — `db-x apply` in a directory containing one means that one.
+ */
+export const DEFAULT_FILE = 'dbx.tsx'
 
 export const COMMANDS = [
 	'preview',
@@ -107,9 +115,11 @@ async function main(): Promise<void> {
 	// `describe` is special: its stdout is JSON only. Run it before the
 	// clack banner / intro to keep stdout clean and pipeable to jq.
 	if (parsed.command === 'describe') {
-		const file = parsed.file ? path.resolve(parsed.file) : null
+		const file = parsed.file ? path.resolve(parsed.file) : await conventionalFile(workDir)
 		if (!file) {
-			process.stderr.write('db-x describe: missing required <file> argument\n')
+			process.stderr.write(
+				`db-x describe: no ${DEFAULT_FILE} here — pass the deployment file as an argument\n`
+			)
 			process.exit(1)
 		}
 		await describeCommand({ file, workDir })
@@ -212,16 +222,24 @@ async function pickCommand(): Promise<Command | null> {
 	return choice as Command
 }
 
-async function resolveFile(
+export async function resolveFile(
 	provided: string | null,
 	workDir: string,
 	cmd: string
 ): Promise<string | null> {
 	if (provided) return path.resolve(provided)
 
+	// Convention before conversation: `./dbx.tsx` is what every example and
+	// scaffold names its entry, so with no argument it's the only sensible
+	// meaning. Resolved ahead of the non-interactive bail so npm scripts and CI
+	// get the default too — the picker below then only handles the genuinely
+	// ambiguous case (no dbx.tsx, or several candidates).
+	const conventional = await conventionalFile(workDir)
+	if (conventional) return conventional
+
 	if (!isInteractive()) {
 		failNonInteractive(
-			`non-interactive stdout: pass the deployment file as an argument. Usage: db-x ${cmd} <file>`
+			`non-interactive stdout: no ${DEFAULT_FILE} in ${workDir} — pass the deployment file as an argument. Usage: db-x ${cmd} [file]`
 		)
 	}
 
@@ -245,6 +263,19 @@ async function resolveFile(
 		return await promptForFile(cmd)
 	}
 	return choice as string
+}
+
+/**
+ * `./dbx.tsx` in `workDir`, or null when it isn't there. Regular files only —
+ * a *directory* named `dbx.tsx` would otherwise be handed to the JSX loader.
+ */
+export async function conventionalFile(workDir: string): Promise<string | null> {
+	const target = path.join(workDir, DEFAULT_FILE)
+	try {
+		return (await fs.stat(target)).isFile() ? target : null
+	} catch {
+		return null
+	}
 }
 
 async function promptForFile(cmd: string): Promise<string | null> {
@@ -293,13 +324,13 @@ async function findJsxFiles(workDir: string): Promise<string[]> {
 function printHelp(): void {
 	const lines = [
 		`${c.bold('Usage')}`,
-		`  ${c.cyan('db-x')} ${c.bold('preview')} ${c.dim('<file>')}    Render JSX, diff against state, print the plan`,
-		`  ${c.cyan('db-x')} ${c.bold('apply')}   ${c.dim('<file>')}    Render, diff, execute changes, persist state`,
-		`  ${c.cyan('db-x')} ${c.bold('refresh')} ${c.dim('<file>')}    Re-read live infra, update state outputs, surface drift`,
-		`  ${c.cyan('db-x')} ${c.bold('destroy')} ${c.dim('<file>')}    Tear down everything in state (reverse order)`,
+		`  ${c.cyan('db-x')} ${c.bold('preview')} ${c.dim('[file]')}    Render JSX, diff against state, print the plan`,
+		`  ${c.cyan('db-x')} ${c.bold('apply')}   ${c.dim('[file]')}    Render, diff, execute changes, persist state`,
+		`  ${c.cyan('db-x')} ${c.bold('refresh')} ${c.dim('[file]')}    Re-read live infra, update state outputs, surface drift`,
+		`  ${c.cyan('db-x')} ${c.bold('destroy')} ${c.dim('[file]')}    Tear down everything in state (reverse order)`,
 		`  ${c.cyan('db-x')} ${c.bold('restore')}            Roll the database back to a pre-apply snapshot`,
 		`  ${c.cyan('db-x')} ${c.bold('state')}              Print the contents of .dbx/state.json`,
-		`  ${c.cyan('db-x')} ${c.bold('describe')} ${c.dim('<file>')}   Dump graph + state + plan as JSON (LLM-optimized; pipe to jq)`,
+		`  ${c.cyan('db-x')} ${c.bold('describe')} ${c.dim('[file]')}   Dump graph + state + plan as JSON (LLM-optimized; pipe to jq)`,
 		`  ${c.cyan('db-x')} ${c.bold('help')}               Show this message`,
 		'',
 		`${c.bold('Flags')}`,
@@ -312,6 +343,7 @@ function printHelp(): void {
 		`${c.bold('Environment')}`,
 		`  ${c.magenta('DEBUG=db-x')}      Enable debug logging`,
 		'',
+		c.dim(`[file] defaults to ./${DEFAULT_FILE} when it exists in the current directory.`),
 		c.dim('Run `db-x` with no arguments for an interactive menu.'),
 	]
 	p.note(lines.join('\n'), c.bold('db-x — JSX as the deployment language'))

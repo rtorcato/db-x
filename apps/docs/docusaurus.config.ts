@@ -8,8 +8,11 @@ const config: Config = {
 		"Production-grade database schema deployment, with a Time Machine and AI review.",
 	favicon: "img/favicon.svg",
 
-	url: "https://db-x.dev",
-	baseUrl: "/",
+	// Published by .github/workflows/docs.yml to GitHub Pages. `db-x.dev` has no
+	// DNS yet; when it does, this becomes url "https://db-x.dev" + baseUrl "/"
+	// plus a `static/CNAME` holding the domain.
+	url: "https://rtorcato.github.io",
+	baseUrl: "/db-x/",
 
 	organizationName: "rtorcato",
 	// Same GitHub repo as Infra-X — DB-X is a distribution on top of @infra-x/runtime.
@@ -30,6 +33,15 @@ const config: Config = {
 	},
 
 	headTags: [
+		{
+			// iOS home-screen icon — Docusaurus only emits the `favicon` link.
+			tagName: "link",
+			attributes: {
+				rel: "apple-touch-icon",
+				sizes: "512x512",
+				href: "/db-x/img/favicon-512.png",
+			},
+		},
 		{
 			tagName: "link",
 			attributes: { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -102,6 +114,9 @@ const config: Config = {
 	],
 
 	themeConfig: {
+		// og:image / twitter:card for every page. Relative to static/; Docusaurus
+		// makes it absolute against `url` + `baseUrl`, which scrapers need.
+		image: "img/social-card.png",
 		colorMode: {
 			defaultMode: "dark",
 			respectPrefersColorScheme: true,
@@ -110,7 +125,8 @@ const config: Config = {
 			title: "DB-X",
 			logo: {
 				alt: "DB-X",
-				src: "img/logo.svg",
+				// Same mark as the favicon and the README banner.
+				src: "img/favicon.svg",
 			},
 			items: [
 				{

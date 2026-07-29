@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(max-width: 600px)" srcset="./banner-mobile.png">
+    <img src="./banner.png" alt="DB-X — database schema as JSX. Diff it, apply it, roll it back." width="100%">
+  </picture>
+</p>
+
 # DB-X
 
 > Production-grade database schema deployment with the ergonomics of a JSX

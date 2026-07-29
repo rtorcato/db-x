@@ -16,6 +16,16 @@ package tracks its own version in its `package.json`.
   props: every declared index is re-created on each apply, so they are applied
   either way.
 
+- **Dropped columns are no longer silently ignored.** `diffTable` computed
+  renames, additions, alterations and dropped *indexes*, but never dropped
+  *columns* — removing a `<Column>` from the JSX produced no SQL, no
+  `destructive` entry and no warning, and the column survived in the database.
+  Both libraries now emit `ALTER TABLE ... DROP COLUMN`, classified destructive,
+  so the `--allow-destructive` gate and the pre-flight snapshot cover it. SQLite
+  refuses a drop of a primary-key, `UNIQUE` or still-indexed column, so those
+  fail the plan with an explicit message instead of dying mid-apply; an index
+  dropped in the same edit is dropped first, which SQLite does allow.
+
 - **Snapshot retention.** `.dbx/snapshots` grew without bound — `apply` captured
   a pre-flight snapshot before every destructive change and nothing ever removed
   one, so a whole-database copy accumulated per destructive apply. `apply` now

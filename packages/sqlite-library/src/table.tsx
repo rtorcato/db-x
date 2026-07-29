@@ -154,9 +154,7 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 				// would never plan the repair.
 				columns = normalizePriorColumns(prior.outputs.columns)
 			} else {
-				ctx.log.info(
-					`Table ${props.name}: ${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.droppedIndexes.length} index drop(s)`
-				)
+				ctx.log.info(`Table ${props.name}: ${summarize(diff)}`)
 				await runSql(parent, diff.sql.join(';\n'), ctx)
 			}
 		}
@@ -290,10 +288,7 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 				? { type: 'no-op' }
 				: { type: 'update', reason: 'props changed' }
 		}
-		const reason =
-			diff.sql.length > 0
-				? `${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.droppedIndexes.length} index drop(s)`
-				: 'props changed'
+		const reason = summarize(diff)
 		return diff.destructive.length > 0
 			? { type: 'update', reason, destructive: diff.destructive, details: diff.sql }
 			: { type: 'update', reason, details: diff.sql }
@@ -404,12 +399,22 @@ export interface TableDiff {
 	additions: ColumnSpec[]
 	/** Names of indexes present in prior state but no longer declared. */
 	droppedIndexes: string[]
+	/** Names of columns present in prior state but no longer declared. */
+	droppedColumns: string[]
 	/** SQL statements in apply order. */
 	sql: string[]
 	/**
 	 * The subset of `sql` that is destructive — drops a schema object.
 	 */
 	destructive: string[]
+}
+
+/** One-line diff summary, shared by the apply log and the plan reason. */
+function summarize(diff: TableDiff): string {
+	return (
+		`${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ` +
+		`${diff.droppedIndexes.length} index drop(s), ${diff.droppedColumns.length} column drop(s)`
+	)
 }
 
 /** A statement that drops a schema object. */
@@ -457,20 +462,53 @@ export function diffTable(
 	const nextIndexNames = new Set(nextIndexes.map((i) => i.name))
 	const droppedIndexes = prior.indexes.filter((i) => !nextIndexNames.has(i.name)).map((i) => i.name)
 
+	// 5. Removed columns — in prior state, no longer declared, and not the
+	//    source side of a rename (that column lives on under its new name).
+	//    SQLite 3.35+ has a native DROP COLUMN, but refuses one that is a PK,
+	//    UNIQUE, or still indexed; those are rejected here so the plan never
+	//    renders a statement that dies mid-apply.
+	const nextNames = new Set(next.map((c) => c.name))
+	const renameSources = new Set(renames.map((c) => c.from as string))
+	const dropped = prior.columns.filter((c) => !nextNames.has(c.name) && !renameSources.has(c.name))
+	for (const c of dropped) assertDroppable(tableName, c, nextIndexes)
+	const droppedColumns = dropped.map((c) => c.name)
+
 	const sql: string[] = [
 		...renames.map((c) => `ALTER TABLE "${tableName}" RENAME COLUMN "${c.from}" TO "${c.name}"`),
 		// SQLite's `ALTER TABLE ... ADD COLUMN` has no `IF NOT EXISTS` clause.
 		...additions.map((c) => `ALTER TABLE "${tableName}" ADD COLUMN ${columnSql(c)}`),
+		// Index drops first: SQLite refuses to drop a column an index still covers.
 		...droppedIndexes.map((n) => `DROP INDEX IF EXISTS "${n}"`),
+		...droppedColumns.map((n) => `ALTER TABLE "${tableName}" DROP COLUMN "${n}"`),
 	]
 
 	return {
 		renames: renames.map((c) => ({ from: c.from as string, to: c.name })),
 		additions,
 		droppedIndexes,
+		droppedColumns,
 		sql,
 		destructive: sql.filter(isDestructiveSql),
 	}
+}
+
+/**
+ * Throws when SQLite would refuse to drop `column`: it is a PRIMARY KEY, carries
+ * a UNIQUE constraint, or a still-declared index covers it. (Dropping the index
+ * in the same JSX edit is fine — the DROP INDEX is emitted first.) A CHECK
+ * constraint, view or trigger over the column would also refuse, but none of
+ * those are expressible in the JSX, so they can only arrive out of band.
+ */
+function assertDroppable(tableName: string, column: ColumnSpec, nextIndexes: IndexSpec[]): void {
+	const fail = (why: string): never => {
+		throw new Error(
+			`SQLite can't DROP COLUMN "${column.name}" on table "${tableName}" (${why}); needs a table rebuild — not supported yet.`
+		)
+	}
+	if (column.primaryKey) fail('primary key')
+	if (column.unique) fail('UNIQUE constraint')
+	const idx = nextIndexes.find((i) => i.columns.includes(column.name))
+	if (idx) fail(`still indexed by "${idx.name}"`)
 }
 
 /**

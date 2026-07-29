@@ -91,7 +91,7 @@ describe('diffTable — columns & renames', () => {
 	})
 
 	it('ignores `from` when the prior column does not exist', () => {
-		const next = [col({ name: 'title', from: 'oldname', type: 'text' })]
+		const next = [idCol, col({ name: 'title', from: 'oldname', type: 'text' })]
 		const diff = diffTable('todos', next, [], prior([idCol]))
 		expect(diff.renames).toEqual([])
 		expect(diff.additions).toEqual([])
@@ -123,6 +123,48 @@ describe('diffTable — indexes', () => {
 		)
 		expect(diff.droppedIndexes).toEqual([])
 		expect(diff.sql).toEqual([])
+	})
+})
+
+describe('diffTable — dropped columns', () => {
+	// The bug: a column removed from the JSX vanished from the plan entirely —
+	// no SQL, no `destructive` entry, no warning, and it survived in the DB.
+	it('emits DROP COLUMN, flagged destructive, for a column no longer declared', () => {
+		const gone = col({ name: 'priority', type: 'int' })
+		const diff = diffTable('todos', [idCol], [], prior([idCol, gone]))
+		expect(diff.droppedColumns).toEqual(['priority'])
+		expect(diff.sql).toEqual(['ALTER TABLE "todos" DROP COLUMN "priority"'])
+		expect(diff.destructive).toEqual(['ALTER TABLE "todos" DROP COLUMN "priority"'])
+	})
+
+	it('does not drop the source column of a rename', () => {
+		const next = [idCol, col({ name: 'title', from: 'name' })]
+		const diff = diffTable('todos', next, [], prior([idCol, col({ name: 'name' })]))
+		expect(diff.droppedColumns).toEqual([])
+	})
+
+	it('drops a covering index before the column it covers', () => {
+		const a = col({ name: 'a', type: 'int' })
+		const b = col({ name: 'b', type: 'int' })
+		const idx: IndexSpec = { name: 'idx_b', columns: ['b'] }
+		const diff = diffTable('t', [a], [], prior([a, b], [idx]))
+		expect(diff.sql).toEqual(['DROP INDEX IF EXISTS "idx_b"', 'ALTER TABLE "t" DROP COLUMN "b"'])
+	})
+
+	// SQLite refuses these at runtime; refusing at plan time keeps a statement
+	// that cannot run out of an approved plan.
+	it('refuses to drop a primary key, a UNIQUE column, or a still-indexed one', () => {
+		const a = col({ name: 'a', type: 'int' })
+		expect(() => diffTable('t', [a], [], prior([a, idCol]))).toThrow(
+			/can't DROP COLUMN "id".*primary key/
+		)
+		expect(() => diffTable('t', [a], [], prior([a, col({ name: 'email', unique: true })]))).toThrow(
+			/can't DROP COLUMN "email".*UNIQUE/
+		)
+		const idx: IndexSpec = { name: 'idx_b', columns: ['b'] }
+		expect(() => diffTable('t', [a], [idx], prior([a, col({ name: 'b' })], [idx]))).toThrow(
+			/can't DROP COLUMN "b".*still indexed by "idx_b"/
+		)
 	})
 })
 

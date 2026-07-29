@@ -1,3 +1,4 @@
+import { getComponentSpec } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
 import { type ColumnSpec, type IndexSpec, columnSql, diffTable } from './table.js'
 
@@ -321,5 +322,47 @@ describe('columnSql — unquoted string default', () => {
 		expect(
 			columnSql(col({ name: 't', type: 'timestamptz', default: 'CURRENT_TIMESTAMP' }))
 		).toContain('DEFAULT CURRENT_TIMESTAMP')
+	})
+})
+
+describe('TableResource.apply — outputs record what ran, not what was wanted', () => {
+	const spec = getComponentSpec('@db-x/postgres-library:table')
+	if (!spec?.apply) throw new Error('postgres table component is not registered with an apply hook')
+	const applyHook = spec.apply as (
+		p: object,
+		c: object,
+		s: object | null
+	) => Promise<{ columns: ColumnSpec[] }>
+
+	// No `<Index>` children, so the index-create loop never fires and a no-SQL
+	// apply spawns nothing at all — the fake parent is never used to run psql.
+	const ctx = {
+		resource: { id: 'table:todos', parent: 'postgres:db' },
+		deps: {
+			'postgres:db': {
+				user: 'u',
+				password: 'p',
+				database: 'app',
+				exec: { command: 'true', args: [] },
+			},
+		},
+		log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+		workDir: '/tmp',
+	}
+
+	// The wedge this guards (#89): a props change that emits no SQL used to
+	// persist the *desired* columns, so state described a database that did not
+	// exist — and the repair it planned next could never run.
+	it('keeps the last-applied columns when the diff emitted no SQL', async () => {
+		const live = [idCol, col({ name: 'title' })]
+		// `from` pointing at nothing is ignored by the diff: no rename, no add.
+		const props = {
+			name: 'todos',
+			columns: [idCol, col({ name: 'title' }), col({ name: 'ghost', from: 'nope' })],
+			indexes: [] as IndexSpec[],
+		}
+		const prior = { props: {}, outputs: { name: 'todos', columns: live, indexes: [] } }
+		const outputs = await applyHook(props, ctx, prior)
+		expect(outputs.columns.map((c) => c.name)).toEqual(['id', 'title'])
 	})
 })

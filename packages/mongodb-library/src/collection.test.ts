@@ -1,3 +1,4 @@
+import { getComponentSpec } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
 import {
 	type CollectionPrior,
@@ -186,5 +187,50 @@ describe('exec helpers', () => {
 
 	it('leaves a credential-free URI alone', () => {
 		expect(redact(['mongodb://localhost:27017/todos'])).toEqual(['mongodb://localhost:27017/todos'])
+	})
+})
+
+describe('CollectionResource.apply — outputs record what ran, not what was wanted', () => {
+	const spec = getComponentSpec('@db-x/mongodb-library:collection')
+	if (!spec?.apply)
+		throw new Error('mongo collection component is not registered with an apply hook')
+	const applyHook = spec.apply as (
+		p: object,
+		c: object,
+		s: object | null
+	) => Promise<{ indexes: IndexSpec[] }>
+
+	// `true` stands in for mongosh: the index-create loop always runs, so the
+	// apply does spawn — it just must not touch a database to prove the point.
+	const ctx = {
+		resource: { id: 'collection:users', parent: 'mongo:db' },
+		deps: {
+			'mongo:db': {
+				database: 'app',
+				uri: 'mongodb://localhost:27017',
+				exec: { command: 'true', args: [] },
+			},
+		},
+		log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+		workDir: '/tmp',
+		signal: new AbortController().signal,
+	}
+
+	// The wedge this guards (#89): a props change that emits no JS used to
+	// persist the *desired* shape, so state described a collection that did not
+	// exist. An index `description` is the cosmetic change that gets there —
+	// `indexShape` ignores it, so the diff has nothing to run.
+	it('keeps the last-applied shape when the diff emitted no JS', async () => {
+		const live: IndexSpec = { name: 'idx_done', keys: { done: 1 } }
+		const props = {
+			name: 'users',
+			indexes: [{ ...live, description: 'now documented' }],
+		}
+		const priorState = {
+			props: { name: 'users', indexes: [live] },
+			outputs: { name: 'users', indexes: [live] },
+		}
+		const outputs = await applyHook(props, ctx, priorState)
+		expect(outputs.indexes[0].description).toBeUndefined()
 	})
 })

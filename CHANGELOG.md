@@ -7,6 +7,15 @@ package tracks its own version in its `package.json`.
 
 ### Fixed
 
+- **State no longer records changes that never ran.** When a diff produced no
+  SQL but the props had moved, `apply` still persisted the *desired* columns
+  into `outputs` — so state described a database that didn't exist, and because
+  the next diff reads `outputs`, the repair it planned could never run (a
+  re-added column failed with `duplicate column name`). All three libraries now
+  return the last-applied shape when nothing executed. `indexes` still track the
+  props: every declared index is re-created on each apply, so they are applied
+  either way.
+
 - **Dropped columns are no longer silently ignored.** `diffTable` computed
   renames, additions, alterations and dropped *indexes*, but never dropped
   *columns* — removing a `<Column>` from the JSX produced no SQL, no

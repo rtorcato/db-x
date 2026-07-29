@@ -5,10 +5,10 @@
   "type": "module",
   "description": "DB-X demo: a todos schema applied to CockroachDB via <DatabaseTarget> — CockroachDB rides @db-x/postgres-library (pg wire protocol), no new library.",
   "scripts": {
-    "preview": "db-x preview ./dbx.tsx",
-    "apply": "db-x apply ./dbx.tsx",
+    "preview": "db-x preview",
+    "apply": "db-x apply",
     "restore": "db-x restore",
-    "destroy": "db-x destroy ./dbx.tsx"
+    "destroy": "db-x destroy"
   },
   "dependencies": {
     "@db-x/postgres-library": "workspace:*",

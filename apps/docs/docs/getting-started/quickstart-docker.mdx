@@ -67,7 +67,7 @@ export default (
 ## 4. Preview the plan
 
 ```bash
-pnpm preview        # db-x preview ./dbx.tsx
+pnpm preview        # db-x preview — picks up ./dbx.tsx
 ```
 
 Renders the JSX, diffs it against `.dbx/state.json`, and prints what would change.
@@ -76,7 +76,7 @@ Preview is **offline** — it does not touch Postgres.
 ## 5. Apply
 
 ```bash
-pnpm apply          # db-x apply ./dbx.tsx
+pnpm apply          # db-x apply — picks up ./dbx.tsx
 ```
 
 Connects to the container, creates the database objects (extensions, tables,

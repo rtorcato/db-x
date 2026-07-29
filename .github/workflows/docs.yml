@@ -1,0 +1,27 @@
+name: 📘 Deploy Docs
+
+# Publishes apps/docs to GitHub Pages (https://rtorcato.github.io/db-x/).
+# The HOW lives in the family's reusable workflow; this only decides WHEN.
+on:
+  push:
+    branches: [main]
+    # packages/*/src so the TypeDoc API reference tracks the code, and
+    # CHANGELOG.md because sync-changelog.mjs pulls it into the site.
+    paths:
+      - 'apps/docs/**'
+      - 'packages/*/src/**'
+      - 'CHANGELOG.md'
+      - '.github/workflows/docs.yml'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  docs:
+    uses: rtorcato/repo-tooling/.github/workflows/docs-deploy.yml@main
+    with:
+      build-filter: '@db-x/docs'

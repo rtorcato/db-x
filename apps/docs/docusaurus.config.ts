@@ -8,8 +8,11 @@ const config: Config = {
 		"Production-grade database schema deployment, with a Time Machine and AI review.",
 	favicon: "img/favicon.svg",
 
-	url: "https://db-x.dev",
-	baseUrl: "/",
+	// Published by .github/workflows/docs.yml to GitHub Pages. `db-x.dev` has no
+	// DNS yet; when it does, this becomes url "https://db-x.dev" + baseUrl "/"
+	// plus a `static/CNAME` holding the domain.
+	url: "https://rtorcato.github.io",
+	baseUrl: "/db-x/",
 
 	organizationName: "rtorcato",
 	// Same GitHub repo as Infra-X — DB-X is a distribution on top of @infra-x/runtime.

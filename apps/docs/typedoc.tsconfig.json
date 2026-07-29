@@ -2,7 +2,12 @@
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"noEmit": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"paths": {
+			"@db-x/runtime": ["../../packages/runtime/src/index.ts"],
+			"@db-x/runtime/jsx-runtime": ["../../packages/runtime/src/jsx-runtime.ts"],
+			"@db-x/postgres-library": ["../../packages/postgres-library/src/index.ts"]
+		}
 	},
 	"include": [
 		"../../packages/runtime/src/**/*.ts",

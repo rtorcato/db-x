@@ -34,6 +34,15 @@ const config: Config = {
 
 	headTags: [
 		{
+			// iOS home-screen icon — Docusaurus only emits the `favicon` link.
+			tagName: "link",
+			attributes: {
+				rel: "apple-touch-icon",
+				sizes: "512x512",
+				href: "/db-x/img/favicon-512.png",
+			},
+		},
+		{
 			tagName: "link",
 			attributes: { rel: "preconnect", href: "https://fonts.googleapis.com" },
 		},
@@ -105,6 +114,9 @@ const config: Config = {
 	],
 
 	themeConfig: {
+		// og:image / twitter:card for every page. Relative to static/; Docusaurus
+		// makes it absolute against `url` + `baseUrl`, which scrapers need.
+		image: "img/social-card.png",
 		colorMode: {
 			defaultMode: "dark",
 			respectPrefersColorScheme: true,
@@ -113,7 +125,8 @@ const config: Config = {
 			title: "DB-X",
 			logo: {
 				alt: "DB-X",
-				src: "img/logo.svg",
+				// Same mark as the favicon and the README banner.
+				src: "img/favicon.svg",
 			},
 			items: [
 				{

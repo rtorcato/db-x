@@ -5,6 +5,15 @@ package tracks its own version in its `package.json`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Snapshot retention.** `.dbx/snapshots` grew without bound — `apply` captured
+  a pre-flight snapshot before every destructive change and nothing ever removed
+  one, so a whole-database copy accumulated per destructive apply. `apply` now
+  prunes to the 5 most recent after a successful apply that captured one. Never
+  prunes on failure, and the snapshot pinned to the current state revision is
+  always among those kept, so `restore` keeps its default target.
+
 ### Added
 
 - **Standalone repo.** Extracted DB-X from the `infra-x` monorepo into its own

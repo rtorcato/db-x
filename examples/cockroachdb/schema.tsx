@@ -50,15 +50,25 @@ export function TodosSchema(props: TodosSchemaProps = {}) {
 				<Index name="idx_todos_priority_done" columns={['priority', 'done']} />
 			</Table>
 
+			{/*
+			 * `ON CONFLICT DO NOTHING` needs something to conflict *with*. The id
+			 * defaults to gen_random_uuid(), so every run minted a new key, hit no
+			 * unique violation, and appended a duplicate set of rows — the clause
+			 * read as a safety net while doing nothing at all. Pinning the uuids
+			 * gives the primary key as a real target, and DO UPDATE makes the seed
+			 * declarative: edit a value here and the existing row changes.
+			 */}
 			<SeedData
 				name="initial-todos"
 				description="Demo rows for first-run local installs"
 				sql={`
-          INSERT INTO todos (title, done) VALUES
-            ('try the db-x cockroachdb demo', true),
-            ('read the README', false),
-            ('point DATABASE_URL at CockroachDB Cloud', false)
-          ON CONFLICT DO NOTHING
+          INSERT INTO todos (id, title, done) VALUES
+            ('11111111-1111-4111-8111-111111111111', 'try the db-x cockroachdb demo', true),
+            ('22222222-2222-4222-8222-222222222222', 'read the README', false),
+            ('33333333-3333-4333-8333-333333333333', 'point DATABASE_URL at CockroachDB Cloud', false)
+          ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            done = excluded.done
         `}
 			/>
 		</Postgres>

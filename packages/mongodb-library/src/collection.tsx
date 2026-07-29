@@ -115,6 +115,10 @@ const CollectionResource = defineComponent<CollectionResourceProps, CollectionRe
 	apply: async (props, ctx, prior) => {
 		const parent = requireMongoParent(ctx, 'Collection')
 
+		// The shape the database actually has once this apply is done. Only the
+		// create and the diff below move it off the last-applied one.
+		let applied = outputsOf(props)
+
 		if (!prior) {
 			ctx.log.info(`Creating collection ${props.name}`)
 			await runJs(parent, buildCreateCollection(props), ctx)
@@ -127,6 +131,11 @@ const CollectionResource = defineComponent<CollectionResourceProps, CollectionRe
 			})
 			if (diff.js.length === 0) {
 				ctx.log.info(`Collection ${props.name} unchanged`)
+				// Nothing ran, so the live collection still matches what we last
+				// applied. Recording the desired shape instead would claim a change
+				// that never happened, and the next diff — which reads `outputs` —
+				// would never plan the repair.
+				applied = { ...prior.outputs }
 			} else {
 				ctx.log.info(
 					`Collection ${props.name}: ${diff.addedIndexes.length} index add(s), ${diff.changedIndexes.length} index change(s), ${diff.droppedIndexes.length} index drop(s)${diff.validatorChanged ? ', validator updated' : ''}`
@@ -141,7 +150,7 @@ const CollectionResource = defineComponent<CollectionResourceProps, CollectionRe
 		if (props.indexes.length > 0) {
 			await runJs(parent, props.indexes.map((i) => buildCreateIndex(props.name, i)).join('\n'), ctx)
 		}
-		return outputsOf(props)
+		return applied
 	},
 	destroy: async (state, ctx) => {
 		const parent = findMongoParent(ctx)

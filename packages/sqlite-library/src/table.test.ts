@@ -279,3 +279,38 @@ describe('TableResource.plan — drift reconciliation', () => {
 		expect(plan(props, priorOf([])).type).toBe('create')
 	})
 })
+
+describe('TableResource.apply — outputs record what ran, not what was wanted', () => {
+	const spec = getComponentSpec('@db-x/sqlite-library:table')
+	if (!spec?.apply) throw new Error('sqlite table component is not registered with an apply hook')
+	const applyHook = spec.apply as (
+		p: object,
+		c: object,
+		s: object | null
+	) => Promise<{ columns: ColumnSpec[] }>
+
+	// No `<Index>` children, so the index-create loop never fires and a no-SQL
+	// apply spawns nothing at all — the fake parent is never used to run sqlite3.
+	const ctx = {
+		resource: { id: 'table:todos', parent: 'sqlite:db' },
+		deps: { 'sqlite:db': { file: '/tmp/none.db', exec: { command: 'true', args: [] } } },
+		log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+		workDir: '/tmp',
+	}
+
+	// The wedge this guards (#89): a props change that emits no SQL used to
+	// persist the *desired* columns, so state described a database that did not
+	// exist — and the repair it planned next could never run.
+	it('keeps the last-applied columns when the diff emitted no SQL', async () => {
+		const live = [idCol, col({ name: 'title' })]
+		// `from` pointing at nothing is ignored by the diff: no rename, no add.
+		const props = {
+			name: 'todos',
+			columns: [idCol, col({ name: 'title' }), col({ name: 'ghost', from: 'nope' })],
+			indexes: [] as IndexSpec[],
+		}
+		const prior = { props: {}, outputs: { name: 'todos', columns: live, indexes: [] } }
+		const outputs = await applyHook(props, ctx, prior)
+		expect(outputs.columns.map((c) => c.name)).toEqual(['id', 'title'])
+	})
+})

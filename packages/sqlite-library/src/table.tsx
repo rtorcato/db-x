@@ -126,6 +126,10 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 		// when it doesn't is a hard failure.
 		const priorIsGone = prior !== null && normalizePriorColumns(prior.outputs.columns).length === 0
 
+		// The columns the database actually has once this apply is done. Only
+		// the CREATE and the diff SQL below move it off the last-applied set.
+		let columns = props.columns
+
 		if (!prior || priorIsGone) {
 			const ghostRenames = props.columns.filter((c) => c.from)
 			if (ghostRenames.length > 0) {
@@ -144,6 +148,11 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 			})
 			if (diff.sql.length === 0) {
 				ctx.log.info(`Table ${props.name} unchanged`)
+				// Nothing ran, so the live table still has the columns we last
+				// applied. Recording the desired ones instead would claim a change
+				// that never happened, and the next diff — which reads `outputs` —
+				// would never plan the repair.
+				columns = normalizePriorColumns(prior.outputs.columns)
 			} else {
 				ctx.log.info(
 					`Table ${props.name}: ${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ${diff.droppedIndexes.length} index drop(s)`
@@ -158,7 +167,9 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 			await runSql(parent, buildCreateIndex(props.name, idx), ctx)
 		}
 
-		return { name: props.name, columns: props.columns, indexes: props.indexes }
+		// `indexes` tracks the props: every declared index is (re-)created just
+		// above on every apply, and removed ones are dropped by the diff.
+		return { name: props.name, columns, indexes: props.indexes }
 	},
 	destroy: async (state, ctx) => {
 		const parent = findSqliteParent(ctx)

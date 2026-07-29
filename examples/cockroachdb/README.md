@@ -61,7 +61,7 @@ pnpm apply --yes                      # run them
 
 # 2. changed your mind? destructive changes are snapshotted first
 pnpm apply --yes --allow-destructive  # captures a snapshot, then applies
-pnpm exec db-x restore --yes                    # roll the database back to it
+pnpm restore --yes                    # roll the database back to it
 ```
 
 `preview` prints the statements a change will execute, marking destructive ones

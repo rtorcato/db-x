@@ -7,6 +7,7 @@
   "scripts": {
     "preview": "db-x preview ./dbx.tsx",
     "apply": "db-x apply ./dbx.tsx",
+    "restore": "db-x restore",
     "destroy": "db-x destroy ./dbx.tsx"
   },
   "dependencies": {

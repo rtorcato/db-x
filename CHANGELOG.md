@@ -5,6 +5,29 @@ package tracks its own version in its `package.json`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **CockroachDB no longer claims a snapshot driver it doesn't have.**
+  `examples/cockroachdb` connects through `@db-x/postgres-library`, so a
+  destructive apply reached for `pg_dump` — which is not supported against
+  CockroachDB. Tested against CRDB v26.2.4 with pg_dump 17.10, it fails outright
+  (`schema with OID 105 does not exist`) on both the demo schema and a
+  two-column throwaway table, so the previous behaviour was an opaque tool error
+  at the moment of the migration.
+
+  `<Postgres>` now probes `select version()` on apply and records `serverKind`.
+  On CockroachDB it publishes `snapshotUnsupported` instead of
+  `snapshotDriver: 'pg-dump'`, and `db-x apply` refuses the destructive change
+  with a message naming the engine and pointing at `BACKUP` + `--no-snapshot`.
+  The CLI's legacy shape match now yields to that declaration — otherwise the
+  `<DatabaseTarget>` record upstream, which carries the same connection fields
+  and cannot know which engine answers them, resurrected pg-dump anyway.
+
+  State written before the probe carries no `serverKind`, and a `no-op` never
+  re-applies, so `<Postgres>` plans one update to fill it in. `psql` against
+  CockroachDB is unaffected; it is the dump path specifically that has no
+  support.
+
 ### Added
 
 - **Drift detection for Postgres and MongoDB.** `<Table>` and `<Collection>`
@@ -38,9 +61,8 @@ package tracks its own version in its `package.json`.
 
   A seed's SQL is opaque to the runtime, so it can only know what a seed is
   downstream of if you say: `<SeedData dependsOn={['table:todos']} …>`. The
-  examples now declare it. Note that Postgres and MongoDB tables have no
-  `refresh()` hook yet, so an out-of-band drop still goes unnoticed there until
-  drift detection lands.
+  examples now declare it. Detecting the out-of-band drop that triggers this on
+  Postgres and MongoDB needed their `refresh()` hooks, added below.
 
 - **State no longer records changes that never ran.** When a diff produced no
   SQL but the props had moved, `apply` still persisted the *desired* columns

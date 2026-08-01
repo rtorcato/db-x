@@ -1,6 +1,11 @@
 import type { Plan, PlanAction, ResourceState, SnapshotRef, StateFile } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
-import { planHasDestructive, resolveSnapshotTarget, selectSnapshotId } from './snapshot.js'
+import {
+	findSnapshotRefusal,
+	planHasDestructive,
+	resolveSnapshotTarget,
+	selectSnapshotId,
+} from './snapshot.js'
 
 const diff = (id: string, action: PlanAction) => ({
 	id,
@@ -144,5 +149,59 @@ describe('selectSnapshotId', () => {
 
 	it('returns a pinned id even if the store is empty (caller reports it missing)', () => {
 		expect(selectSnapshotId(undefined, 'snap-pruned', [])).toBe('snap-pruned')
+	})
+})
+
+describe('snapshotUnsupported — engines no driver can capture', () => {
+	const res = (id: string, outputs: Record<string, unknown>): ResourceState => ({
+		id,
+		kind: 'test:thing',
+		props: {},
+		outputs,
+		dependsOn: [],
+		lastApplied: '2026-07-27T00:00:00.000Z',
+	})
+	const stateOf = (...records: ResourceState[]): StateFile => ({
+		version: 1,
+		resources: Object.fromEntries(records.map((r) => [r.id, r])),
+	})
+
+	const exec = { command: 'env', args: [], env: { PGHOST: 'db' } }
+	const pgShaped = { user: 'root', password: 'root', database: 'todos', exec }
+	const crdb = { ...pgShaped, serverKind: 'cockroachdb', snapshotUnsupported: 'cockroachdb' }
+
+	it('resolves no target for a database that declared itself uncapturable', () => {
+		expect(resolveSnapshotTarget(stateOf(res('pg', crdb)))).toBeNull()
+	})
+
+	// The wedge (#85): `<DatabaseTarget>` sits upstream of `<Postgres>` and
+	// carries the same user/password/database/exec fields without knowing which
+	// engine answers them, so the legacy shape match resolved CockroachDB to
+	// pg-dump anyway — and pg_dump against CRDB produces no usable archive.
+	it('does not let a sibling Postgres-shaped record resurrect pg-dump', () => {
+		const state = stateOf(res('database-target#0', pgShaped), res('postgres:db', crdb))
+		expect(resolveSnapshotTarget(state)).toBeNull()
+	})
+
+	it('explains the refusal by engine', () => {
+		expect(findSnapshotRefusal(stateOf(res('pg', crdb)))).toMatch(/CockroachDB has no snapshot/)
+		expect(findSnapshotRefusal(stateOf(res('pg', crdb)))).toMatch(/pg_dump fails against it/)
+	})
+
+	it('has no refusal to report for an ordinary Postgres deployment', () => {
+		expect(findSnapshotRefusal(stateOf(res('pg', pgShaped)))).toBeNull()
+	})
+
+	it('still names an engine it has no canned explanation for', () => {
+		const exotic = { ...pgShaped, snapshotUnsupported: 'spanner' }
+		expect(findSnapshotRefusal(stateOf(res('pg', exotic)))).toBe('spanner has no snapshot driver')
+	})
+
+	// A tagged, capturable database elsewhere in state still wins: the refusal
+	// only overrides the shape-match *guess*, not an explicit tag.
+	it('still resolves an explicitly tagged database alongside an uncapturable one', () => {
+		const sqlite = { file: '/tmp/x.db', exec, snapshotDriver: 'sqlite-backup' }
+		const state = stateOf(res('pg', crdb), res('lite', sqlite))
+		expect(resolveSnapshotTarget(state)?.driver).toBe('sqlite-backup')
 	})
 })

@@ -29,6 +29,20 @@ export interface PostgresParentOutputs {
 	snapshotDriver?: 'pg-dump'
 	/** What that driver captures — from `<Postgres snapshot>`. Defaults to `schema`. */
 	snapshotMode?: 'schema' | 'full'
+	/**
+	 * Which engine answered the version probe. Absent on state written before
+	 * the probe existed, which is what triggers the one-off re-apply that fills
+	 * it in.
+	 */
+	serverKind?: 'postgres' | 'cockroachdb'
+	/**
+	 * Set instead of `snapshotDriver` when no driver can capture this database.
+	 * CockroachDB speaks the pg wire protocol but `pg_dump` fails against it
+	 * (`schema with OID … does not exist`), so tagging it `pg-dump` would let a
+	 * destructive apply proceed behind an archive that cannot restore. The CLI
+	 * reads this and refuses with a message naming the engine.
+	 */
+	snapshotUnsupported?: 'cockroachdb'
 }
 
 /**

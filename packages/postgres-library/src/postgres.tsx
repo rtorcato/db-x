@@ -10,8 +10,8 @@
 // with the credentials, so child components (`<Extension>`, `<Table>`,
 // `<SeedData>`, `<DbUser>`) work identically across runtimes.
 
-import { type PlanAction, type ResourceState, defineComponent } from '@db-x/runtime'
-import { type PostgresParentOutputs, requireRuntimeParent } from './exec.js'
+import { type Ctx, type PlanAction, type ResourceState, defineComponent } from '@db-x/runtime'
+import { type PostgresParentOutputs, queryJson, requireRuntimeParent } from './exec.js'
 
 export interface PostgresProps {
 	/** Logical name. Used only to derive the resource id (`postgres:<name>`). */
@@ -67,16 +67,28 @@ export const Postgres = defineComponent<PostgresProps, PostgresParentOutputs>({
 			)
 		}
 
-		ctx.log.info(
-			`Postgres ready (database=${database}, user=${user}${props.protect ? ', protect=on' : ''})`
-		)
-
-		return {
+		const connection: PostgresParentOutputs = {
 			user,
 			password,
 			database,
 			exec: runtime.exec,
-			snapshotDriver: 'pg-dump',
+		}
+		const serverKind = await detectServerKind(connection, ctx)
+
+		ctx.log.info(
+			`Postgres ready (database=${database}, user=${user}, server=${serverKind}${props.protect ? ', protect=on' : ''})`
+		)
+
+		return {
+			...connection,
+			serverKind,
+			// CockroachDB speaks the pg wire protocol, but `pg_dump` does not work
+			// against it — see `snapshotUnsupported`. Tagging it `pg-dump` anyway
+			// would have the CLI capture an archive that cannot restore, which is
+			// the one failure a safety net must not have.
+			...(serverKind === 'cockroachdb'
+				? { snapshotUnsupported: 'cockroachdb' as const }
+				: { snapshotDriver: 'pg-dump' as const }),
 			snapshotMode: props.snapshot ?? 'schema',
 		}
 	},
@@ -91,11 +103,49 @@ export const Postgres = defineComponent<PostgresProps, PostgresParentOutputs>({
 	},
 	plan: (props, state): PlanAction => {
 		if (!state) return { type: 'create' }
+		// State written before the server probe existed carries no `serverKind`,
+		// and a `no-op` never re-applies — so without this the stale
+		// `snapshotDriver: 'pg-dump'` tag would outlive the fix on exactly the
+		// databases it was added for. One cheap re-apply per database settles it.
+		if (state.outputs.serverKind === undefined) {
+			return { type: 'update', reason: 'server kind not yet detected' }
+		}
 		return JSON.stringify(props) === JSON.stringify(state.props)
 			? { type: 'no-op' }
 			: { type: 'update', reason: 'props changed' }
 	},
 })
+
+/**
+ * Which engine is actually answering. CockroachDB speaks the pg wire protocol
+ * and reports itself through `version()` like Postgres does, so one cheap query
+ * settles it — and it is the only honest way: nothing about the connection URL
+ * or the port distinguishes them.
+ *
+ * A probe that can't reach the server assumes Postgres, which is what this
+ * component did before the probe existed. Failing here instead would turn an
+ * unreachable database into an error from `<Postgres>` rather than from the
+ * first statement that actually needs it.
+ */
+async function detectServerKind(
+	connection: PostgresParentOutputs,
+	ctx: Ctx
+): Promise<'postgres' | 'cockroachdb'> {
+	try {
+		const rows = await queryJson(
+			connection,
+			connection.user,
+			connection.database,
+			'select version() as version',
+			ctx
+		)
+		const version = String(rows[0]?.version ?? '')
+		return /cockroach/i.test(version) ? 'cockroachdb' : 'postgres'
+	} catch (err) {
+		ctx.log.debug?.(`server probe failed, assuming postgres: ${(err as Error).message}`)
+		return 'postgres'
+	}
+}
 
 /**
  * Compose a `postgres://` URL from the parts a `<Postgres>` knows

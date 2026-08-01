@@ -49,30 +49,63 @@ CockroachDB Cloud cluster instead.
 
 ## Migrate and roll back
 
-The full loop — change the schema, see exactly what will run, apply it, and
-undo it if it was wrong.
+**Rollback is not supported on CockroachDB.** Every other example ends a
+destructive change with `pnpm restore`; this one cannot, and `db-x` refuses the
+change rather than pretending otherwise.
 
 ```sh
 psql "$DATABASE_URL" -c "select * from todos;"   # see the data at any point
 
 # 1. change the schema — e.g. add a column to schema.tsx, or remove an <Index>
-pnpm preview                    # shows the exact statements, not a summary
+pnpm preview                          # shows the exact statements, not a summary
 pnpm apply --yes                      # run them
 
-# 2. changed your mind? destructive changes are snapshotted first
-pnpm apply --yes --allow-destructive  # captures a snapshot, then applies
-pnpm restore --yes                    # roll the database back to it
+# 2. a destructive change stops here, by design:
+pnpm apply --yes --allow-destructive
+# ■ Refusing destructive changes without a snapshot: CockroachDB has no
+#   snapshot driver — it speaks the Postgres wire protocol, but pg_dump fails
+#   against it ("schema with OID … does not exist"), so there is no archive to
+#   roll back to. Take a native BACKUP first, then re-run with --no-snapshot.
 ```
 
 `preview` prints the statements a change will execute, marking destructive ones
 in red. `apply` refuses a destructive change unless you pass
 `--allow-destructive`, and refuses again if it cannot capture a snapshot first —
-so there is always something to roll back to.
+so there is always something to roll back to. On CockroachDB that second gate
+never opens.
 
-Snapshots go through `pg_dump`, which CockroachDB does **not** officially
-support (its own equivalents are `BACKUP` / `SHOW CREATE` / `EXPORT`). Treat
-rollback here as unverified — see
-[#78](https://github.com/rtorcato/db-x/issues/78).
+### Why, and what to do instead
+
+`pg_dump` is not supported against CockroachDB. It does not merely produce a
+questionable archive — it exits non-zero before writing anything:
+
+```
+$ pg_dump -U root -d todos --schema-only
+pg_dump: error: schema with OID 105 does not exist
+```
+
+Verified against **CockroachDB v26.2.4** with **pg_dump 17.10**, on both the
+demo schema and a two-column throwaway table. `psql` itself works fine, which is
+why the rest of this example runs at all — it is the dump path specifically that
+has no support.
+
+So `<Postgres>` probes `select version()` on apply and, on CockroachDB, publishes
+no snapshot driver at all. The alternative — tagging it `pg-dump` and hoping —
+is the worst failure a safety net can have: it looks like it worked.
+
+To make a destructive change here, take a snapshot with CockroachDB's own tools
+first, then opt out of the DB-X one:
+
+```sh
+# CockroachDB's native equivalents of pg_dump:
+cockroach sql --insecure -e "BACKUP DATABASE todos INTO 'nodelocal://1/todos-backup';"
+# (BACKUP to local storage needs --external-io-dir or a nodelocal path)
+
+pnpm apply --yes --allow-destructive --no-snapshot
+```
+
+A native `@db-x/snapshot-cockroachdb` driver over `BACKUP` / `SHOW CREATE` /
+`EXPORT` would close this gap — not built yet.
 
 ## Configuration
 

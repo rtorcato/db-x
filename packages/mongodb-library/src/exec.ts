@@ -102,6 +102,43 @@ export async function runJs(parent: MongoParentOutputs, js: string, ctx: Ctx): P
 	})
 }
 
+/**
+ * Run a read-only snippet and parse what it returns. Used by `refresh` hooks,
+ * which must observe the database without changing it.
+ *
+ * The snippet is wrapped in `EJSON.stringify(...)` and printed, so the caller
+ * writes an expression, not a print statement:
+ *
+ *   queryJson(parent, `${coll('todos')}.getIndexes()`, ctx)
+ *
+ * `--quiet` keeps the banner out of stdout; anything the snippet itself logs
+ * would corrupt the parse, which is why it must be an expression.
+ */
+export async function queryJson<T = unknown>(
+	parent: MongoParentOutputs,
+	expression: string,
+	ctx: Ctx
+): Promise<T> {
+	const js = `print(EJSON.stringify(${expression}));`
+	const args = [
+		...parent.exec.args,
+		'mongosh',
+		parent.uri,
+		'--quiet',
+		'--eval',
+		wrapScript(parent.database, js),
+	]
+	const out = await captureCommand(parent.exec.command, args, {
+		cwd: parent.exec.cwd ?? ctx.workDir,
+		log: ctx.log,
+		signal: ctx.signal,
+		env: parent.exec.env,
+	})
+	const trimmed = out.trim()
+	if (trimmed === '') return [] as unknown as T
+	return JSON.parse(trimmed) as T
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  child_process.spawn wrapper
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,4 +211,58 @@ async function spawnCommand(command: string, args: string[], opts: SpawnOptions)
  */
 export function redact(args: string[]): string[] {
 	return args.map((a) => a.replace(/^(mongodb(?:\+srv)?:\/\/[^:/@]+):[^@]*@/, '$1:***@'))
+}
+
+/**
+ * Like `spawnCommand`, but resolves with the child's stdout instead of
+ * streaming it to the log — the caller wants the bytes, not a transcript.
+ */
+async function captureCommand(
+	command: string,
+	args: string[],
+	opts: SpawnOptions
+): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		if (opts.signal.aborted) {
+			reject(new Error(`${command} ${args.join(' ')}: aborted before start`))
+			return
+		}
+		opts.log.debug?.(`$ ${command} ${args.join(' ')}`)
+		const child = spawn(command, args, {
+			cwd: opts.cwd,
+			env: opts.env ? { ...process.env, ...opts.env } : process.env,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		})
+		let stdout = ''
+		let stderr = ''
+		child.stdout?.setEncoding('utf8')
+		child.stderr?.setEncoding('utf8')
+		child.stdout?.on('data', (chunk: string) => {
+			stdout += chunk
+		})
+		child.stderr?.on('data', (chunk: string) => {
+			stderr += chunk
+		})
+		const onAbort = (): void => {
+			child.kill('SIGINT')
+		}
+		opts.signal.addEventListener('abort', onAbort, { once: true })
+		child.on('error', (err) => {
+			opts.signal.removeEventListener('abort', onAbort)
+			reject(new Error(`${command}: ${err.message}`))
+		})
+		child.on('close', (code, sig) => {
+			opts.signal.removeEventListener('abort', onAbort)
+			if (sig) {
+				reject(new Error(`${command} ${args.join(' ')}: terminated by signal ${sig}`))
+				return
+			}
+			if (code !== 0) {
+				const tail = stderr.trim().split('\n').slice(-5).join('\n')
+				reject(new Error(`${command} ${args.join(' ')} failed (exit ${code}):\n${tail}`))
+				return
+			}
+			resolve(stdout)
+		})
+	})
 }

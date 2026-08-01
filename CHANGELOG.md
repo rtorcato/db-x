@@ -5,6 +5,25 @@ package tracks its own version in its `package.json`.
 
 ## [Unreleased]
 
+### Added
+
+- **Drift detection for Postgres and MongoDB.** `<Table>` and `<Collection>`
+  grew the `refresh()` hook SQLite already had, so `db-x refresh` no longer
+  answers "no refresh() hook" for every resource on those engines and drift
+  stops being invisible until an apply blows up. Postgres reads
+  `information_schema.columns` and `pg_indexes` (excluding the indexes that back
+  a PRIMARY KEY / UNIQUE constraint — those belong to the constraint, not to
+  us); Mongo reads `getCollectionNames()` + `getIndexes()`, ignoring the
+  built-in `_id_`.
+
+  Both follow the rules SQLite learned the hard way: an in-sync database returns
+  its stored outputs untouched, so nothing churns on engine-normalised type
+  spellings, and a surviving column keeps its authored spec rather than being
+  overwritten with the engine's view of it. A table or collection that has gone
+  missing entirely is now routed back through create — for Mongo that means an
+  explicit `missing` flag rather than an empty index list, because declaring no
+  indexes is legal and only `createCollection` restores the validator.
+
 ### Fixed
 
 - **State no longer records changes that never ran.** When a diff produced no

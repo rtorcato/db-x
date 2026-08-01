@@ -118,6 +118,55 @@ export async function runSql(
 	})
 }
 
+/**
+ * Run a read-only query and parse its rows. Used by `refresh` hooks, which
+ * must observe the database without changing it.
+ *
+ * Postgres builds the JSON itself — `json_agg` over the sub-select, printed by
+ * `-At` (unaligned, tuples-only) as a single line. That beats parsing psql's
+ * column output, where any value containing the delimiter would corrupt the
+ * split. `coalesce` keeps a no-rows result a valid `[]` rather than a blank.
+ */
+export async function queryJson(
+	parent: PostgresParentOutputs,
+	user: string,
+	database: string,
+	sql: string,
+	ctx: Ctx
+): Promise<Array<Record<string, unknown>>> {
+	const wrapped = `select coalesce(json_agg(row_to_json(t)), '[]'::json)::text from (${sql}) t`
+	const psqlArgs = [
+		'psql',
+		'-U',
+		user,
+		'-d',
+		database,
+		'-At',
+		'-v',
+		'ON_ERROR_STOP=1',
+		'-c',
+		wrapped,
+	]
+	const out = await captureCommand(parent.exec.command, [...parent.exec.args, ...psqlArgs], {
+		cwd: parent.exec.cwd ?? ctx.workDir,
+		log: ctx.log,
+		signal: ctx.signal,
+		env: parent.exec.env,
+	})
+	const trimmed = out.trim()
+	if (trimmed === '') return []
+	return JSON.parse(trimmed) as Array<Record<string, unknown>>
+}
+
+/**
+ * Escape a value for interpolation into a SQL string literal. Table names
+ * reach the introspection queries as literals, not identifiers, so they need
+ * `'` doubling rather than `"` quoting.
+ */
+export function quoteLiteral(value: string): string {
+	return `'${value.replace(/'/g, "''")}'`
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  child_process.spawn wrapper
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +227,60 @@ async function spawnCommand(command: string, args: string[], opts: SpawnOptions)
 				return
 			}
 			resolve()
+		})
+	})
+}
+
+/**
+ * Like `spawnCommand`, but resolves with the child's stdout instead of
+ * streaming it to the log — the caller wants the bytes, not a transcript.
+ */
+async function captureCommand(
+	command: string,
+	args: string[],
+	opts: SpawnOptions
+): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		if (opts.signal.aborted) {
+			reject(new Error(`${command} ${args.join(' ')}: aborted before start`))
+			return
+		}
+		opts.log.debug?.(`$ ${command} ${args.join(' ')}`)
+		const child = spawn(command, args, {
+			cwd: opts.cwd,
+			env: opts.env ? { ...process.env, ...opts.env } : process.env,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		})
+		let stdout = ''
+		let stderr = ''
+		child.stdout?.setEncoding('utf8')
+		child.stderr?.setEncoding('utf8')
+		child.stdout?.on('data', (chunk: string) => {
+			stdout += chunk
+		})
+		child.stderr?.on('data', (chunk: string) => {
+			stderr += chunk
+		})
+		const onAbort = (): void => {
+			child.kill('SIGINT')
+		}
+		opts.signal.addEventListener('abort', onAbort, { once: true })
+		child.on('error', (err) => {
+			opts.signal.removeEventListener('abort', onAbort)
+			reject(new Error(`${command}: ${err.message}`))
+		})
+		child.on('close', (code, sig) => {
+			opts.signal.removeEventListener('abort', onAbort)
+			if (sig) {
+				reject(new Error(`${command} ${args.join(' ')}: terminated by signal ${sig}`))
+				return
+			}
+			if (code !== 0) {
+				const tail = stderr.trim().split('\n').slice(-5).join('\n')
+				reject(new Error(`${command} ${args.join(' ')} failed (exit ${code}):\n${tail}`))
+				return
+			}
+			resolve(stdout)
 		})
 	})
 }

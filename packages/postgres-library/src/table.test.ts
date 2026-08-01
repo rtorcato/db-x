@@ -1,6 +1,13 @@
 import { getComponentSpec } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
-import { type ColumnSpec, type IndexSpec, columnSql, diffTable } from './table.js'
+import {
+	type ColumnSpec,
+	type IndexSpec,
+	columnSql,
+	columnsQuery,
+	diffTable,
+	indexesQuery,
+} from './table.js'
 
 const col = (o: Partial<ColumnSpec> & { name: string }): ColumnSpec => ({ type: 'text', ...o })
 const prior = (columns: ColumnSpec[], indexes: IndexSpec[] = []) => ({ columns, indexes })
@@ -439,5 +446,129 @@ describe('TableResource.apply — outputs record what ran, not what was wanted',
 		const prior = { props: {}, outputs: { name: 'todos', columns: live, indexes: [] } }
 		const outputs = await applyHook(props, ctx, prior)
 		expect(outputs.columns.map((c) => c.name)).toEqual(['id', 'title'])
+	})
+})
+
+describe('introspection queries', () => {
+	it('scopes both queries to the current schema', () => {
+		expect(columnsQuery('todos')).toContain('table_schema = current_schema()')
+		expect(indexesQuery('todos')).toContain('i.schemaname = current_schema()')
+	})
+
+	it('escapes a quote in the table name instead of ending the literal', () => {
+		expect(columnsQuery("o'brien")).toContain("table_name = 'o''brien'")
+	})
+
+	// Postgres builds an index to back a PRIMARY KEY / UNIQUE constraint. It is
+	// the constraint's, not ours — reported as drift, the diff would try to drop
+	// something it never created.
+	it('excludes constraint-backing indexes', () => {
+		expect(indexesQuery('todos')).toContain('pg_constraint')
+	})
+})
+
+describe('TableResource.refresh — introspection to outputs', () => {
+	const spec = getComponentSpec('@db-x/postgres-library:table')
+	if (!spec?.refresh) throw new Error('postgres table component has no refresh hook')
+	const refreshHook = spec.refresh as (
+		s: object,
+		c: object
+	) => Promise<{ columns: ColumnSpec[]; indexes: IndexSpec[] }>
+
+	/**
+	 * A stand-in for psql. `exec.args` are prepended and the psql invocation is
+	 * appended, so `sh -c <script>` runs the script with those trailing args as
+	 * positional parameters — which lets the script answer the columns query and
+	 * the indexes query differently by matching on what it was asked.
+	 */
+	const ctxReturning = (columnsJson: string, indexesJson: string) => ({
+		resource: { id: 'table:todos', parent: 'postgres:db' },
+		deps: {
+			'postgres:db': {
+				user: 'u',
+				password: 'p',
+				database: 'app',
+				exec: {
+					command: 'sh',
+					args: [
+						'-c',
+						'case "$*" in *information_schema*) printf %s "$DBX_COLS";; *) printf %s "$DBX_IDX";; esac',
+					],
+					env: { DBX_COLS: columnsJson, DBX_IDX: indexesJson },
+				},
+			},
+		},
+		log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+		workDir: '/tmp',
+		signal: new AbortController().signal,
+	})
+
+	const stateOf = (columns: ColumnSpec[], indexes: IndexSpec[] = []) => ({
+		props: {},
+		outputs: { name: 'todos', columns, indexes },
+	})
+
+	it('reports no drift when live names match the stored ones', async () => {
+		const stored = [idCol, col({ name: 'title' })]
+		const outputs = await refreshHook(
+			stateOf(stored),
+			ctxReturning('[{"name":"id"},{"name":"title"}]', '[]')
+		)
+		// Identity, not just equality: an in-sync database must not rewrite state
+		// with Postgres' own type spellings.
+		expect(outputs.columns).toBe(stored)
+	})
+
+	it('reports a dropped table as having no columns', async () => {
+		const outputs = await refreshHook(stateOf([idCol]), ctxReturning('[]', '[]'))
+		expect(outputs.columns).toEqual([])
+		expect(outputs.indexes).toEqual([])
+	})
+
+	// The trap: returning Postgres' view wholesale rewrites `serial` as
+	// `integer`, and the next diff reads that as a type change — so a database
+	// merely missing one column would plan an ALTER TYPE on every other.
+	it('keeps the authored spec for columns that survived', async () => {
+		const outputs = await refreshHook(
+			stateOf([idCol, col({ name: 'title' })]),
+			ctxReturning('[{"name":"id","type":"integer"}]', '[]')
+		)
+		expect(outputs.columns).toEqual([idCol])
+	})
+
+	it('describes a column it has never seen from introspection', async () => {
+		const outputs = await refreshHook(
+			stateOf([idCol]),
+			ctxReturning(
+				'[{"name":"id","type":"integer"},{"name":"stray","type":"text","notnull":true,"default":"\'x\'"}]',
+				'[]'
+			)
+		)
+		expect(outputs.columns[1]).toEqual({
+			name: 'stray',
+			type: 'text',
+			notNull: true,
+			default: "'x'",
+		})
+	})
+
+	// An index nobody authored has no recorded columns, which the diff reads as
+	// an unknown shape and leaves alone rather than rebuilding every apply.
+	it('records an unauthored index with no columns', async () => {
+		const outputs = await refreshHook(
+			stateOf([idCol], [{ name: 'idx_known', columns: ['id'] }]),
+			ctxReturning('[{"name":"id"}]', '[{"name":"idx_known"},{"name":"idx_stray"}]')
+		)
+		expect(outputs.indexes).toEqual([
+			{ name: 'idx_known', columns: ['id'] },
+			{ name: 'idx_stray', columns: [] },
+		])
+	})
+
+	it('reports the table gone when the query itself fails', async () => {
+		const ctx = ctxReturning('[]', '[]')
+		ctx.deps['postgres:db'].exec = { command: 'false', args: [], env: {} }
+		const outputs = await refreshHook(stateOf([idCol]), ctx)
+		expect(outputs.columns).toEqual([])
 	})
 })

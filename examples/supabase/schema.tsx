@@ -60,6 +60,10 @@ export function TodosSchema(props: TodosSchemaProps = {}) {
 
 			<SeedData
 				name="rls-and-ownership"
+				// The FK and the policy hang off `todos`, so this is downstream of it.
+				// Raw SQL is opaque to the runtime — declaring the edge is what orders
+				// the two AND re-applies the policy when the table is rebuilt.
+				dependsOn={['table:todos']}
 				description="FK to auth.users + owner-only Row Level Security policy (auth.uid() = user_id)"
 				sql={`
           -- Owner FK to Supabase's managed auth.users. DROP-then-ADD keeps it idempotent.

@@ -4,6 +4,14 @@
 // `ON CONFLICT DO NOTHING`.
 //
 // Must be a child of `<Mongo>`. The target database is bound to `dbx` for you.
+//
+// Name the collections a seed fills in `dependsOn` — the JS is opaque to the
+// runtime, so that list is the only way it knows what this seed is downstream
+// of. It buys correct ordering *and* a re-run when one of those collections is
+// recreated (a rebuilt collection comes back empty; the seed's own state can't
+// tell):
+//
+//   <SeedData name="initial-todos" dependsOn={['collection:todos']} js={...} />
 
 import { defineComponent } from '@db-x/runtime'
 import { requireMongoParent, runJs } from './exec.js'
@@ -24,6 +32,12 @@ export interface SeedDataOutputs {
 
 export const SeedData = defineComponent<SeedDataProps, SeedDataOutputs>({
 	kind: '@db-x/mongodb-library:seed',
+	// A seed's documents live in its collection, not in its own outputs, so a
+	// collection that gets recreated comes back empty while this resource's
+	// state still says it ran. Re-run whenever a declared dependency is rebuilt.
+	// This only reaches the collections named in `dependsOn` — a seed is opaque
+	// JS, so the runtime can't infer what it writes to; see the note above.
+	reapplyOnDependencyRecreate: true,
 	apply: async (props, ctx) => {
 		const parent = requireMongoParent(ctx, 'SeedData')
 		ctx.log.info(`Seeding ${props.name}`)

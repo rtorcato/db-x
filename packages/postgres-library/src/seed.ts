@@ -12,6 +12,13 @@
 //
 // Must be a child of `<Postgres>`. Inherits `user` / `database` from
 // that parent unless overridden.
+//
+// Name the tables a seed fills in `dependsOn` — the SQL is opaque to the
+// runtime, so that list is the only way it knows what this seed is downstream
+// of. It buys correct ordering *and* a re-run when one of those tables is
+// recreated (a rebuilt table comes back empty; the seed's own state can't tell):
+//
+//   <SeedData name="initial-todos" dependsOn={['table:todos']} sql={...} />
 
 import { defineComponent } from '@db-x/runtime'
 import { requirePostgresParent, runSql } from './exec.js'
@@ -34,6 +41,12 @@ export interface SeedDataOutputs {
 
 export const SeedData = defineComponent<SeedDataProps, SeedDataOutputs>({
 	kind: '@db-x/postgres-library:seed',
+	// A seed's rows live in its table, not in its own outputs, so a table that
+	// gets recreated comes back empty while this resource's state still says it
+	// ran. Re-run whenever a declared dependency is rebuilt. This only reaches
+	// the tables named in `dependsOn` — a seed is raw SQL, so the runtime can't
+	// infer which tables it writes to; see the note above.
+	reapplyOnDependencyRecreate: true,
 	apply: async (props, ctx) => {
 		const parent = requirePostgresParent(ctx, 'SeedData')
 		const user = props.user ?? parent.user

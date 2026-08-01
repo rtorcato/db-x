@@ -7,6 +7,22 @@ package tracks its own version in its `package.json`.
 
 ### Fixed
 
+- **A recreated table no longer comes back empty.** `<SeedData>` records only
+  `{ name, ranAt }`, so a table that `refresh` found missing was rebuilt while
+  the seed that fills it planned `no-op` — its own props and state hadn't moved,
+  and the rows never returned. Components can now set
+  `reapplyOnDependencyRecreate` on their spec, and the diff engine upgrades their
+  `no-op` to an update when anything they `dependsOn` is being created or
+  replaced. All three `<SeedData>` components opt in. Only `no-op` is upgraded
+  and only a `create`/`replace` dependency triggers it, so an unchanged — or
+  merely altered — dependency still re-runs nothing.
+
+  A seed's SQL is opaque to the runtime, so it can only know what a seed is
+  downstream of if you say: `<SeedData dependsOn={['table:todos']} …>`. The
+  examples now declare it. Note that Postgres and MongoDB tables have no
+  `refresh()` hook yet, so an out-of-band drop still goes unnoticed there until
+  drift detection lands.
+
 - **State no longer records changes that never ran.** When a diff produced no
   SQL but the props had moved, `apply` still persisted the *desired* columns
   into `outputs` — so state described a database that didn't exist, and because

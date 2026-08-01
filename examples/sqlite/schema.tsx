@@ -34,6 +34,10 @@ export function TodosSchema() {
 			 */}
 			<SeedData
 				name="initial-todos"
+				// The rows live in `todos`, so the seed is downstream of it. Raw SQL
+				// is opaque to the runtime — declaring the edge is what orders the
+				// two AND re-runs this seed when the table is rebuilt empty.
+				dependsOn={['table:todos']}
 				description="Demo rows for first-run local installs"
 				sql={`
           INSERT INTO todos (id, title, done, color, dueDate, priority) VALUES

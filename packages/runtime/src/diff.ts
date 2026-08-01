@@ -46,6 +46,10 @@ export function plan(desired: Graph, state: StateFile): Plan {
 	const actions: ResourceDiff[] = []
 	const ordered = topoSort(desired)
 	const seen = new Set<string>()
+	// Resources this plan brings back from nothing. Dependencies are planned
+	// before their dependents (topo order), so a dependent can ask whether
+	// anything it depends on is in here by the time it is planned.
+	const recreated = new Set<string>()
 
 	for (const id of ordered) {
 		seen.add(id)
@@ -60,12 +64,23 @@ export function plan(desired: Graph, state: StateFile): Plan {
 			)
 		}
 
-		const action: PlanAction = spec.plan
+		let action: PlanAction = spec.plan
 			? spec.plan(
 					resource.props as Parameters<NonNullable<typeof spec.plan>>[0],
 					current as Parameters<NonNullable<typeof spec.plan>>[1]
 				)
 			: defaultPlan(resource.props, current)
+
+		// A resource whose content lives inside a dependency (a seed's rows live
+		// in a table) is stale when that dependency is rebuilt, even though its
+		// own props and state never moved. Only `no-op` is upgraded — anything
+		// else already re-applies.
+		if (action.type === 'no-op' && spec.reapplyOnDependencyRecreate) {
+			const rebuilt = resource.dependsOn.find((dep) => recreated.has(dep))
+			if (rebuilt) action = { type: 'update', reason: `dependency "${rebuilt}" was recreated` }
+		}
+
+		if (action.type === 'create' || action.type === 'replace') recreated.add(id)
 
 		actions.push({ id, kind: resource.kind, action, desired: resource, current })
 	}

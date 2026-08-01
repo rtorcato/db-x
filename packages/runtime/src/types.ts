@@ -142,6 +142,18 @@ export interface ComponentSpec<TProps extends object, TOutputs extends object> {
 	refresh?: (state: ResourceState<TProps, TOutputs>, ctx: Ctx) => Promise<TOutputs>
 	/** Optional custom diff. Default is shallow JSON equality on props. */
 	plan?: (props: TProps, state: ResourceState<TProps, TOutputs> | null) => PlanAction
+	/**
+	 * Re-apply this resource when something it `dependsOn` is being created or
+	 * replaced, even though its own props and state are unchanged.
+	 *
+	 * For resources whose real content lives inside a dependency rather than in
+	 * their own outputs — `<SeedData>` writes rows into a table, so a recreated
+	 * table comes back empty while the seed's state still says it ran. Opting in
+	 * makes "my dependency was recreated" a reason to plan an update.
+	 *
+	 * The re-apply must be idempotent: it fires on every recreate, not once.
+	 */
+	reapplyOnDependencyRecreate?: boolean
 	/** Optional defaults merged into props before validation. */
 	defaults?: Partial<TProps>
 }

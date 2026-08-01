@@ -165,6 +165,95 @@ describe('plan', () => {
 		expect(() => plan(graph, emptyState())).toThrow(/cycle detected/i)
 	})
 
+	// The bug: a table that `refresh` found missing gets recreated empty, but the
+	// seed that fills it planned `no-op` — its own props and state never moved,
+	// so the rows never came back.
+	describe('reapplyOnDependencyRecreate', () => {
+		// A table whose state says it is gone, plus a seed that depends on it.
+		const recreatedTableAndSeed = (seedExtras: Partial<AnySpec> = {}) => {
+			// Stands in for a table whose `refresh` found nothing live: state
+			// exists, but the plan is a fresh CREATE.
+			const Table = defineComponent(makeSpec('test:table', { plan: () => ({ type: 'create' }) }))
+			const Seed = defineComponent(makeSpec('test:seed', seedExtras))
+			const graph = renderToGraph([
+				jsx(Table, { name: 't' }),
+				jsx(Seed, { name: 's', dependsOn: ['table:t'] }),
+			])
+			const state = buildState(
+				pastState('table:t', 'test:table', { name: 't' }),
+				pastState('seed:s', 'test:seed', { name: 's' }, { dependsOn: ['table:t'] })
+			)
+			return plan(graph, state)
+		}
+
+		it('upgrades a no-op to update when a dependency is recreated', () => {
+			const p = recreatedTableAndSeed({ reapplyOnDependencyRecreate: true })
+			const seed = p.actions.find((a) => a.id === 'seed:s')
+			expect(seed?.action).toEqual({
+				type: 'update',
+				reason: 'dependency "table:t" was recreated',
+			})
+		})
+
+		it('leaves the no-op alone for a component that has not opted in', () => {
+			const p = recreatedTableAndSeed()
+			expect(p.actions.find((a) => a.id === 'seed:s')?.action.type).toBe('no-op')
+		})
+
+		it('stays a no-op when the dependency is unchanged', () => {
+			const Table = defineComponent(makeSpec('test:table'))
+			const Seed = defineComponent(makeSpec('test:seed', { reapplyOnDependencyRecreate: true }))
+			const graph = renderToGraph([
+				jsx(Table, { name: 't' }),
+				jsx(Seed, { name: 's', dependsOn: ['table:t'] }),
+			])
+			const state = buildState(
+				pastState('table:t', 'test:table', { name: 't' }),
+				pastState('seed:s', 'test:seed', { name: 's' }, { dependsOn: ['table:t'] })
+			)
+			const p = plan(graph, state)
+			expect(p.actions.find((a) => a.id === 'table:t')?.action.type).toBe('no-op')
+			expect(p.actions.find((a) => a.id === 'seed:s')?.action.type).toBe('no-op')
+		})
+
+		// A dependency that merely changed shape still holds its rows.
+		it('does not fire when the dependency is only updated', () => {
+			const Table = defineComponent(makeSpec('test:table'))
+			const Seed = defineComponent(makeSpec('test:seed', { reapplyOnDependencyRecreate: true }))
+			const graph = renderToGraph([
+				jsx(Table, { name: 't', cols: 2 }),
+				jsx(Seed, { name: 's', dependsOn: ['table:t'] }),
+			])
+			const state = buildState(
+				pastState('table:t', 'test:table', { name: 't', cols: 1 }),
+				pastState('seed:s', 'test:seed', { name: 's' }, { dependsOn: ['table:t'] })
+			)
+			const p = plan(graph, state)
+			expect(p.actions.find((a) => a.id === 'table:t')?.action.type).toBe('update')
+			expect(p.actions.find((a) => a.id === 'seed:s')?.action.type).toBe('no-op')
+		})
+
+		it('fires on a replaced dependency, and cascades through a recreated chain', () => {
+			const Table = defineComponent(
+				makeSpec('test:table', { plan: () => ({ type: 'replace', reason: 'rebuilt' }) })
+			)
+			const Seed = defineComponent(makeSpec('test:seed', { reapplyOnDependencyRecreate: true }))
+			const graph = renderToGraph([
+				jsx(Table, { name: 't' }),
+				jsx(Seed, { name: 's', dependsOn: ['table:t'] }),
+			])
+			const state = buildState(
+				pastState('table:t', 'test:table', { name: 't' }),
+				pastState('seed:s', 'test:seed', { name: 's' }, { dependsOn: ['table:t'] })
+			)
+			const p = plan(graph, state)
+			expect(p.actions.find((a) => a.id === 'seed:s')?.action).toEqual({
+				type: 'update',
+				reason: 'dependency "table:t" was recreated',
+			})
+		})
+	})
+
 	it('preserves phase from state when only the destroy action remains', () => {
 		const Foo = defineComponent(makeSpec('test:foo'))
 		const graph = renderToGraph(jsx(Foo, { name: 'keep' }))

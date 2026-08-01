@@ -77,8 +77,16 @@ export function resolveSnapshotTarget(state: StateFile): SnapshotTarget | null {
 		}
 	}
 
+	// The fallback below is a *guess* from the shape of the outputs, and an
+	// explicit "nothing can capture this" beats a guess. Without this, a
+	// CockroachDB deployment still resolves to pg-dump via the `<DatabaseTarget>`
+	// record upstream of `<Postgres>`: it carries the same user/password/database
+	// /exec fields and cannot know which engine answers them.
+	if (findSnapshotRefusal(state) !== null) return null
+
 	for (const res of Object.values(state.resources)) {
 		const o = res.outputs as Record<string, unknown> | undefined
+		if (o?.snapshotUnsupported !== undefined) continue
 		if (
 			o &&
 			typeof o.user === 'string' &&
@@ -90,6 +98,29 @@ export function resolveSnapshotTarget(state: StateFile): SnapshotTarget | null {
 		}
 		if (o && typeof o.file === 'string' && hasExec(o)) {
 			return { driver: 'sqlite-backup', outputs: o, label: describe('sqlite-backup', o) }
+		}
+	}
+	return null
+}
+
+/** Engines that publish `snapshotUnsupported`, and why no driver can capture them. */
+const NO_DRIVER_REASON: Record<string, string> = {
+	cockroachdb:
+		'CockroachDB has no snapshot driver — it speaks the Postgres wire protocol, but pg_dump fails against it ("schema with OID … does not exist"), so there is no archive to roll back to. Take a native BACKUP first, then re-run with --no-snapshot',
+}
+
+/**
+ * Why snapshotting was refused, when a database in state declared itself
+ * uncapturable. Returned instead of the generic "nothing to snapshot" message,
+ * which would send someone looking for a missing connection rather than an
+ * engine that has no driver.
+ */
+export function findSnapshotRefusal(state: StateFile): string | null {
+	for (const res of Object.values(state.resources)) {
+		const o = res.outputs as Record<string, unknown> | undefined
+		const engine = o?.snapshotUnsupported
+		if (typeof engine === 'string') {
+			return NO_DRIVER_REASON[engine] ?? `${engine} has no snapshot driver`
 		}
 	}
 	return null

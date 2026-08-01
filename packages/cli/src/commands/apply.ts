@@ -20,6 +20,7 @@ import {
 	SNAPSHOT_KEEP_LAST,
 	createSnapshotDriver,
 	planHasDestructive,
+	findSnapshotRefusal,
 	resolveSnapshotTarget,
 } from '../snapshot.js'
 import { failNonInteractive, isInteractive, makeSpinner as ttyMakeSpinner } from '../tty.js'
@@ -125,8 +126,11 @@ export async function applyCommand(args: ApplyArgs): Promise<void> {
 		if (!args.noSnapshot && planHasDestructive(plan)) {
 			const target = resolveSnapshotTarget(state)
 			if (!target) {
+				const refusal = findSnapshotRefusal(state)
 				throw new Error(
-					'Refusing destructive changes without a snapshot: no database connection found in state to snapshot. Re-run with --no-snapshot to proceed without one.'
+					refusal
+						? `Refusing destructive changes without a snapshot: ${refusal}.`
+						: 'Refusing destructive changes without a snapshot: no database connection found in state to snapshot. Re-run with --no-snapshot to proceed without one.'
 				)
 			}
 			const snap = makeSpinner()

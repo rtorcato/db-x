@@ -18,7 +18,7 @@ on it. That's the wedge.
 
 ## What we're building
 
-A focused distribution on top of `@infra-x/runtime`:
+A focused distribution on top of `@db-x/runtime`:
 
 1. **Components.** `<Postgres>`, `<MySQL>`, `<Table>`, `<Column>`,
    `<Index>`, `<Extension>`, `<DbUser>`, `<SeedData>` —
@@ -74,66 +74,53 @@ A miss on any one isn't fatal; together they are the pitch.
 
 ## Architecture sketch
 
+Shipped:
+
 ```
-@infra-x/runtime              ← shared JSX runtime, reconciler, state
+@db-x/runtime              ← JSX runtime, reconciler, diff engine, state I/O
         │
-        ├── @db-x/runtime              ← thin re-export + db-specific types
-        ├── @db-x/postgres-library      ← <Postgres>, <Table>, <Column>, …
-        ├── @db-x/mysql-library         ← parallel for MySQL
-        ├── @db-x/snapshot-pg-dump     ← pg_dump driver
-        ├── @db-x/snapshot-rds         ← AWS RDS snapshot driver
-        ├── @db-x/mcp                  ← MCP server
-        ├── @db-x/types-export         ← schema → .d.ts / Drizzle / sqlc
+        ├── @db-x/postgres-library     ← <DatabaseTarget>, <Postgres>, <Table>, <Column>, …
+        ├── @db-x/sqlite-library       ← <Sqlite>, <Table>, <Column>, <Index>, <SeedData>
+        ├── @db-x/mongodb-library      ← <Mongo>, <Collection>, <Index>, <SeedData>
+        ├── @db-x/snapshot-pg-dump     ← pg_dump SnapshotDriver
+        ├── @db-x/snapshot-mongodump   ← mongodump SnapshotDriver
+        ├── @db-x/snapshot-sqlite      ← sqlite3 .backup SnapshotDriver
         └── @db-x/cli                  ← `db-x` binary
 ```
 
-Lives **in the same monorepo as Infra-X** as `packages/db-x-*/`. Same
-pnpm workspace, separate npm scope, separate release cadence.
+Planned, each tracked by an issue:
 
-### When to split DB-X into its own repo
+```
+@db-x/mysql-library      #12    @db-x/snapshot-cockroachdb  #109
+@db-x/sqlserver-library  #29    @db-x/snapshot-sqlserver    #32
+@db-x/duckdb-library     #30    @db-x/snapshot-duckdb       #33
+@db-x/mcp                #9     @db-x/types-export          #10
+```
 
-Stay in the monorepo until **all three** triggers fire. Don't re-litigate
-this decision on intuition alone — they're listed here so future-us has
-a checklist.
-
-1. **`@infra-x/runtime@1.0` is published** with a frozen `defineComponent`
-   contract. Splitting before that means coordinating breaking changes
-   across two repos every time the runtime moves.
-2. **DB-X has demonstrable external usage** — issues from outside
-   contributors, non-trivial GitHub stars, a paying user or sponsor.
-   Splitting an unused product just doubles the maintenance surface.
-3. **Release coordination is the real bottleneck.** If we keep wanting to
-   ship DB-X without an Infra-X release (or vice versa) and the monorepo
-   is what's blocking it, that's the signal.
-
-Interim boundary hygiene that does *not* require a split:
-
-- Separate npm scope (`@db-x/*`) — already done.
-- Separate CLI binary (`db-x`) — tracked in the [v0.0 milestone](https://github.com/rtorcato/db-x/milestones).
-- Separate Docusaurus docs site at `apps/dbx-docs/` — already scaffolded;
-  deploy workflow is parked on a fix branch.
-- Separate milestone series on GitHub (`dbx-v0.0`, `dbx-v0.1`, …) tagged
-  with `area:dbx`.
-- Separate `CHANGELOG.md` per scope.
+Lives in its own repository, `rtorcato/db-x`. The split from the Infra-X
+monorepo is done; the runtime is vendored, so there is no `@infra-x`
+dependency in the tree.
 
 ## Relationship to Infra-X
 
-- DB-X depends on `@infra-x/runtime` but **Infra-X never depends on
-  DB-X**. The dependency points one way.
-- Components are reusable in both directions: an Infra-X user can drop
-  `<Table>` from `@db-x/postgres-library` inside an `<Infra>` tree and
-  get DB-X's richer features without switching CLIs.
-- The `db-x` CLI never exposes Infra-X's general-purpose `apply` for
-  arbitrary resource types — it's scoped to DB resources. Conversely
-  Infra-X's CLI doesn't expose `db-x snapshot` / `db-x restore`.
+DB-X began as a fork of Infra-X and has since vendored the runtime. The
+two projects share no code path and release independently — **there is no
+`@infra-x` dependency**, in either direction.
+
+What carried over is the model, not the package: the same
+`defineComponent` contract, the same phase ordering, the same state shape.
+A component written against `@db-x/runtime` is not loadable by Infra-X's
+CLI, and vice versa; keeping the contracts aligned is a convention, not a
+guarantee.
+
+The `db-x` binary stays scoped to database resources and never exposes a
+general-purpose `apply` for arbitrary resource types.
 
 ## Sequencing
 
 The shipping order and every task live in
 [GitHub milestones](https://github.com/rtorcato/db-x/milestones) (`v0.0 — Scaffold + rich
 diff` → `v1.1 — More SQL engines`) and their issues — that's the single source of truth.
-**No package starts before Infra-X v0.1 is out**; DB-X depends on a stable runtime
-contract.
 
 ## How we'll know it worked
 

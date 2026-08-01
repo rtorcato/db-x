@@ -4,13 +4,12 @@ description: Schema components shipped in @db-x/postgres-library.
 ---
 
 The DB-X Postgres component library ships a small, focused set of schema
-primitives. Each is a `defineComponent` from `@infra-x/runtime`, so they
-compose naturally with Infra-X resources.
+primitives. Each is a `defineComponent` from `@db-x/runtime`.
 
 :::note[Auto-generated API]
-A full TypeDoc-generated reference is on the way — see
-[issue #34](https://github.com/rtorcato/infra-x/issues/34). The summary here
-covers the shipped surface today.
+A full TypeDoc-generated reference is on the way. The summary here covers the
+shipped Postgres surface; SQLite and MongoDB components are documented on their
+own [engine pages](../engines/sqlite.mdx).
 :::
 
 ## `<DatabaseTarget>`
@@ -78,8 +77,9 @@ A table; children declare columns and indexes.
 
 ## `<Column>`
 
-A column. Detect type, default, NOT NULL, and UNIQUE changes is tracked in
-[issue #5](https://github.com/rtorcato/infra-x/issues/5).
+A column. Type, default, NOT NULL and UNIQUE changes are detected and emitted
+as `ALTER COLUMN` statements; `from=` renames losslessly rather than
+drop-and-add.
 
 ```tsx
 <Column name="title" type="text" notNull />

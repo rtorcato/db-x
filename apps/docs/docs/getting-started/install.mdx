@@ -48,6 +48,6 @@ Every DB-X schema file declares its JSX runtime at the top:
 /** @jsxImportSource @db-x/runtime */
 ```
 
-`@db-x/runtime` is a thin re-export of `@infra-x/runtime`, so a schema written
-under it also composes inside an Infra-X graph — but you don't need Infra-X to
-run DB-X. The `db-x` CLI is standalone.
+`@db-x/runtime` is DB-X's own JSX runtime — forked from Infra-X, now vendored
+and maintained here. There is no `@infra-x` dependency, and nothing else is
+needed to run DB-X: the `db-x` CLI is standalone.

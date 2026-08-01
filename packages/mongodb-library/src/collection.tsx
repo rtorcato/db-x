@@ -15,7 +15,7 @@
 // `validator={{...}}` doesn't. Flip it to a child if it ever grows siblings.
 
 import { type AnyElement, type Child, type PlanAction, defineComponent } from '@db-x/runtime'
-import { findMongoParent, requireMongoParent, runJs } from './exec.js'
+import { findMongoParent, queryJson, requireMongoParent, runJs } from './exec.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  <Index> — marker absorbed by <Collection> at render time
@@ -103,6 +103,13 @@ interface CollectionResourceOutputs {
 	validationAction?: ValidationAction
 	/** Index specs, so the next diff can detect changed and removed indexes. */
 	indexes: IndexSpec[]
+	/**
+	 * Set by `refresh` when the collection isn't there any more. An empty index
+	 * list can't say this on its own — declaring no indexes is legal — and the
+	 * repair differs: a missing collection needs `createCollection` (which is
+	 * what restores the validator), not a stack of `createIndex` calls.
+	 */
+	missing?: boolean
 	[key: string]: unknown
 }
 
@@ -119,7 +126,10 @@ const CollectionResource = defineComponent<CollectionResourceProps, CollectionRe
 		// create and the diff below move it off the last-applied one.
 		let applied = outputsOf(props)
 
-		if (!prior) {
+		// `createCollection` is idempotent enough here (it throws only if the
+		// collection exists, which `refresh` has just told us it doesn't), and it
+		// is the only path that re-applies the validator.
+		if (!prior || prior.outputs.missing) {
 			ctx.log.info(`Creating collection ${props.name}`)
 			await runJs(parent, buildCreateCollection(props), ctx)
 		} else {
@@ -165,10 +175,76 @@ const CollectionResource = defineComponent<CollectionResourceProps, CollectionRe
 			ctx.log.warn(`drop failed: ${(err as Error).message}`)
 		}
 	},
+	/**
+	 * Read-only drift check: does the live collection still carry the indexes we
+	 * applied? Answers the question `db-x refresh` exists for — "someone dropped
+	 * an index / dropped the collection behind my back".
+	 *
+	 * Returns the stored outputs unchanged when they match, so an in-sync
+	 * database reports no drift rather than churning: Mongo echoes a validator
+	 * back with its own key ordering and `$jsonSchema` spelling, which a
+	 * round-trip comparison would read as a change on every refresh.
+	 *
+	 * ponytail: compares index NAMES, not keys or options, and doesn't read the
+	 * validator back at all. That catches what actually happens — an index or a
+	 * whole collection dropped out of band. A silently *redefined* index is
+	 * already caught at diff time by `indexShape`, against what we last applied.
+	 */
+	refresh: async (state, ctx) => {
+		const parent = findMongoParent(ctx)
+		if (!parent) {
+			ctx.log.warn(`Parent mongo missing; cannot refresh collection ${state.outputs.name}`)
+			return state.outputs
+		}
+		const name = state.outputs.name
+		// `missing` rather than an empty index list: a collection is allowed to
+		// declare no indexes, so `[]` can't distinguish "gone" from "bare". The
+		// flag is what routes apply back through `createCollection`, which is the
+		// only path that restores the validator.
+		const gone = { ...state.outputs, indexes: [], missing: true }
+
+		let live: { exists: boolean; indexes: LiveIndex[] }
+		try {
+			live = await queryJson<{ exists: boolean; indexes: LiveIndex[] }>(
+				parent,
+				introspectExpression(name),
+				ctx
+			)
+		} catch (err) {
+			ctx.log.warn(`${name}: ${(err as Error).message}`)
+			return gone
+		}
+		if (!live.exists) return gone
+
+		// It's there, so clear any `missing` a previous refresh recorded —
+		// otherwise the plan would keep insisting on a create.
+		const present = { ...state.outputs }
+		present.missing = undefined
+
+		// `_id_` is Mongo's own, created with every collection and undroppable.
+		const liveNames = live.indexes
+			.map((i) => String(i.name))
+			.filter((n) => n !== '_id_')
+			.sort()
+		const storedNames = state.outputs.indexes.map((i) => i.name).sort()
+		if (JSON.stringify(liveNames) === JSON.stringify(storedNames)) return present
+
+		// Keep the authored spec for every index that survived; describe only
+		// genuinely-unknown ones. An index we never authored gets empty `keys`,
+		// which `indexShape` reads as a shape we can't vouch for.
+		const stored = new Map(state.outputs.indexes.map((i) => [i.name, i]))
+		return {
+			...present,
+			indexes: liveNames.map((n) => stored.get(n) ?? { name: n, keys: {} }),
+		}
+	},
 	// Pure diff at plan time so `preview` / `apply` can classify destructive
 	// changes (index drops, validator tightening) before anything runs.
 	plan: (props, prior): PlanAction => {
 		if (!prior) return { type: 'create' }
+		// refresh looked and found no collection. `collMod` would fail against
+		// something that isn't there; it needs creating.
+		if (prior.outputs.missing) return { type: 'create' }
 		// Deliberately NOT short-circuiting on `props === prior.props`: refresh
 		// writes observed reality into `outputs`, so identical props can still
 		// need work (a column dropped out of band). Diffing against outputs is
@@ -214,6 +290,26 @@ function outputsOf(props: CollectionResourceProps): CollectionResourceOutputs {
 /** `dbx` is bound to the target database by `wrapScript` in exec.ts. */
 function coll(name: string): string {
 	return `dbx.getCollection(${JSON.stringify(name)})`
+}
+
+/** What `getIndexes()` gives back — only the name is load-bearing here. */
+interface LiveIndex {
+	name: string
+	[key: string]: unknown
+}
+
+/**
+ * Existence + live indexes in one round trip. Guarded by `getCollectionNames()`
+ * because `getIndexes()` on a missing collection throws, and a drift check must
+ * report absence rather than fail.
+ */
+export function introspectExpression(collection: string): string {
+	const name = JSON.stringify(collection)
+	return (
+		`(dbx.getCollectionNames().includes(${name}) ` +
+		`? { exists: true, indexes: ${coll(collection)}.getIndexes() } ` +
+		': { exists: false, indexes: [] })'
+	)
 }
 
 /** The `createCollection` / `collMod` options block, omitted when empty. */

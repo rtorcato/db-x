@@ -8,6 +8,7 @@ import {
 	buildCreateCollection,
 	buildCreateIndex,
 	diffCollection,
+	introspectExpression,
 	isValidatorTightened,
 } from './collection.js'
 import { redact, wrapScript } from './exec.js'
@@ -232,5 +233,105 @@ describe('CollectionResource.apply — outputs record what ran, not what was wan
 		}
 		const outputs = await applyHook(props, ctx, priorState)
 		expect(outputs.indexes[0].description).toBeUndefined()
+	})
+})
+
+describe('introspectExpression', () => {
+	// `getIndexes()` on a collection that isn't there throws, and a drift check
+	// that dies is worse than one that reports absence.
+	it('guards the index read behind an existence check', () => {
+		const js = introspectExpression('todos')
+		expect(js).toContain('getCollectionNames().includes("todos")')
+		expect(js).toContain('exists: false, indexes: []')
+	})
+})
+
+describe('CollectionResource.refresh — introspection to outputs', () => {
+	const spec = getComponentSpec('@db-x/mongodb-library:collection')
+	if (!spec?.refresh) throw new Error('mongodb collection component has no refresh hook')
+	const refreshHook = spec.refresh as (
+		s: object,
+		c: object
+	) => Promise<{ indexes: IndexSpec[]; missing?: boolean }>
+
+	/** Stands in for mongosh: `sh -c` prints whatever the test wants back. */
+	const ctxReturning = (json: string) => ({
+		resource: { id: 'collection:todos', parent: 'mongo:db' },
+		deps: {
+			'mongo:db': {
+				database: 'app',
+				uri: 'mongodb://localhost',
+				exec: { command: 'sh', args: ['-c', 'printf %s "$DBX_OUT"'], env: { DBX_OUT: json } },
+			},
+		},
+		log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+		workDir: '/tmp',
+		signal: new AbortController().signal,
+	})
+
+	const stateOf = (indexes: IndexSpec[], extra: Record<string, unknown> = {}) => ({
+		props: {},
+		outputs: { name: 'todos', indexes, ...extra },
+	})
+
+	const idx: IndexSpec = { name: 'idx_done', keys: { done: 1 } }
+
+	it('reports no drift when live index names match', async () => {
+		const stored = [idx]
+		const outputs = await refreshHook(
+			stateOf(stored),
+			ctxReturning('{"exists":true,"indexes":[{"name":"_id_"},{"name":"idx_done"}]}')
+		)
+		expect(outputs.indexes).toEqual(stored)
+		expect(outputs.missing).toBeUndefined()
+	})
+
+	// `_id_` is Mongo's own and undroppable — counting it as drift would make
+	// every refresh report a change.
+	it('ignores the built-in _id_ index', async () => {
+		const outputs = await refreshHook(
+			stateOf([]),
+			ctxReturning('{"exists":true,"indexes":[{"name":"_id_"}]}')
+		)
+		expect(outputs.indexes).toEqual([])
+	})
+
+	it('drops a hand-deleted index from outputs so the diff re-adds it', async () => {
+		const outputs = await refreshHook(
+			stateOf([idx, { name: 'idx_gone', keys: { x: 1 } }]),
+			ctxReturning('{"exists":true,"indexes":[{"name":"_id_"},{"name":"idx_done"}]}')
+		)
+		expect(outputs.indexes).toEqual([idx])
+	})
+
+	it('marks a dropped collection missing, not merely index-less', async () => {
+		const outputs = await refreshHook(stateOf([idx]), ctxReturning('{"exists":false,"indexes":[]}'))
+		expect(outputs.missing).toBe(true)
+		expect(outputs.indexes).toEqual([])
+	})
+
+	// Otherwise the plan would keep insisting on a create after the collection
+	// came back.
+	it('clears a stale missing flag once the collection is there again', async () => {
+		const outputs = await refreshHook(
+			stateOf([idx], { missing: true }),
+			ctxReturning('{"exists":true,"indexes":[{"name":"_id_"},{"name":"idx_done"}]}')
+		)
+		expect(outputs.missing).toBeUndefined()
+	})
+
+	it('records an unauthored index with no keys', async () => {
+		const outputs = await refreshHook(
+			stateOf([idx]),
+			ctxReturning('{"exists":true,"indexes":[{"name":"idx_done"},{"name":"idx_stray"}]}')
+		)
+		expect(outputs.indexes).toEqual([idx, { name: 'idx_stray', keys: {} }])
+	})
+
+	it('reports the collection missing when the read itself fails', async () => {
+		const ctx = ctxReturning('')
+		ctx.deps['mongo:db'].exec = { command: 'false', args: [], env: {} }
+		const outputs = await refreshHook(stateOf([idx]), ctx)
+		expect(outputs.missing).toBe(true)
 	})
 })

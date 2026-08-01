@@ -15,7 +15,13 @@
 //     `!` marker and a --allow-destructive gate. (issue #2)
 
 import { type AnyElement, type Child, type PlanAction, defineComponent } from '@db-x/runtime'
-import { findPostgresParent, requirePostgresParent, runSql } from './exec.js'
+import {
+	findPostgresParent,
+	queryJson,
+	quoteLiteral,
+	requirePostgresParent,
+	runSql,
+} from './exec.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  <Column> + <Index> — markers absorbed by <Table> at render time
@@ -141,11 +147,17 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 		const user = props.user ?? parent.user
 		const database = props.database ?? parent.database
 
+		// `CREATE TABLE IF NOT EXISTS` is idempotent, so taking this path when the
+		// table does still exist costs nothing — but taking the ALTER path when it
+		// doesn't is a hard failure. `refresh` reports a table it can't find as
+		// having no columns.
+		const priorIsGone = prior !== null && normalizePriorColumns(prior.outputs.columns).length === 0
+
 		// The columns the database actually has once this apply is done. Only
 		// the CREATE and the diff SQL below move it off the last-applied set.
 		let columns = props.columns
 
-		if (!prior) {
+		if (!prior || priorIsGone) {
 			// First apply: stable columns can't carry a `from` (there's nothing
 			// to rename from). Reject early so an authoring mistake surfaces.
 			const ghostRenames = props.columns.filter((c) => c.from)
@@ -207,11 +219,96 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 			ctx.log.warn(`drop failed: ${(err as Error).message}`)
 		}
 	},
+	/**
+	 * Read-only drift check: does the live table still look like what we
+	 * applied? Answers the question `db-x refresh` exists for — "someone
+	 * dropped a column / dropped the table behind my back".
+	 *
+	 * Returns the stored outputs unchanged when the live table matches, so an
+	 * in-sync database reports no drift rather than churning on cosmetic
+	 * differences (Postgres reports `integer` for `int4`, rewrites defaults as
+	 * `'blue'::text`, and neither round-trips to the authored props exactly).
+	 *
+	 * ponytail: compares the set of column and index NAMES, not types, defaults
+	 * or nullability — the same ceiling `@db-x/sqlite-library` set, and for the
+	 * same reason: it catches what actually happens (a table dropped, a column
+	 * added or removed out of band) and needs no type-normalisation table.
+	 * Deepen it when a real case demands.
+	 */
+	refresh: async (state, ctx) => {
+		const parent = findPostgresParent(ctx)
+		if (!parent) {
+			ctx.log.warn(`Parent postgres missing; cannot refresh table ${state.outputs.name}`)
+			return state.outputs
+		}
+		const user = state.props.user ?? parent.user
+		const database = state.props.database ?? parent.database
+		const table = state.outputs.name
+		const gone = { ...state.outputs, columns: [], indexes: [] }
+
+		let liveColumns: Array<Record<string, unknown>>
+		let liveIndexes: Array<Record<string, unknown>>
+		try {
+			liveColumns = await queryJson(parent, user, database, columnsQuery(table), ctx)
+			liveIndexes = await queryJson(parent, user, database, indexesQuery(table), ctx)
+		} catch (err) {
+			// A connection that isn't there is not the same claim as a table that
+			// isn't there, but neither is a table we can vouch for. Report it gone
+			// and let the plan re-create — `CREATE TABLE IF NOT EXISTS` is safe if
+			// the truth was merely unreachable.
+			ctx.log.warn(`${table}: ${(err as Error).message}`)
+			return gone
+		}
+
+		if (liveColumns.length === 0) return gone
+
+		const liveColNames = liveColumns.map((c) => String(c.name)).sort()
+		const storedColNames = state.outputs.columns.map((c) => c.name).sort()
+		const liveIdxNames = liveIndexes.map((i) => String(i.name)).sort()
+		const storedIdxNames = state.outputs.indexes.map((i) => i.name).sort()
+
+		const inSync =
+			JSON.stringify(liveColNames) === JSON.stringify(storedColNames) &&
+			JSON.stringify(liveIdxNames) === JSON.stringify(storedIdxNames)
+		if (inSync) return state.outputs
+
+		// Keep the authored spec for every column that still exists, and only
+		// describe genuinely-unknown ones from introspection. Returning Postgres'
+		// own view wholesale would rewrite `serial` as `integer` and re-spell
+		// defaults, which the next diff reads as a type change — so a database
+		// merely missing one column would plan an ALTER TYPE on every other.
+		const storedColumns = new Map(state.outputs.columns.map((c) => [c.name, c]))
+		const storedIndexes = new Map(state.outputs.indexes.map((i) => [i.name, i]))
+		return {
+			...state.outputs,
+			columns: liveColumns.map((c) => {
+				const name = String(c.name)
+				return (
+					storedColumns.get(name) ?? {
+						name,
+						type: String(c.type),
+						...(c.notnull ? { notNull: true } : {}),
+						...(c.default === null || c.default === undefined
+							? {}
+							: { default: String(c.default) }),
+					}
+				)
+			}),
+			// An index we never authored has no recorded columns; the diff treats
+			// that empty list as an unknown shape and leaves it alone rather than
+			// rebuilding it on every apply.
+			indexes: liveIdxNames.map((name) => storedIndexes.get(name) ?? { name, columns: [] }),
+		}
+	},
 	// Pure diff at plan time so `preview` / `apply` can classify destructive
 	// changes (ALTER TYPE, DROP INDEX/CONSTRAINT) before any SQL runs. Compares
 	// desired columns/indexes against the last-applied outputs.
 	plan: (props, prior): PlanAction => {
 		if (!prior) return { type: 'create' }
+		// A prior with no columns means refresh looked and found nothing — the
+		// table is gone. Altering it would emit ADD COLUMN against something that
+		// doesn't exist; it needs creating.
+		if (normalizePriorColumns(prior.outputs.columns).length === 0) return { type: 'create' }
 		// Deliberately NOT short-circuiting on `props === prior.props`: refresh
 		// writes observed reality into `outputs`, so identical props can still
 		// need work (a column dropped out of band). Diffing against outputs is
@@ -297,6 +394,41 @@ export function columnSql(c: ColumnSpec): string {
 	if (c.unique && !c.primaryKey) parts.push('UNIQUE')
 	if (c.default !== undefined) parts.push(`DEFAULT ${checkDefault(c.name, c.default)}`)
 	return parts.join(' ')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Introspection — the read side of `refresh`
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Live columns, in ordinal order. Scoped to `current_schema()` so a same-named
+ * table in another schema on the search path can't answer for this one.
+ */
+export function columnsQuery(table: string): string {
+	return (
+		'select column_name as name, data_type as type, ' +
+		"(is_nullable = 'NO') as notnull, column_default as default " +
+		'from information_schema.columns ' +
+		`where table_schema = current_schema() and table_name = ${quoteLiteral(table)} ` +
+		'order by ordinal_position'
+	)
+}
+
+/**
+ * Live indexes, excluding the ones Postgres creates to back a PRIMARY KEY or
+ * UNIQUE constraint — those belong to the constraint, not to us, and reporting
+ * them as drift would have the diff try to drop something it never created.
+ */
+export function indexesQuery(table: string): string {
+	return (
+		'select i.indexname as name from pg_indexes i ' +
+		'where i.schemaname = current_schema() ' +
+		`and i.tablename = ${quoteLiteral(table)} ` +
+		'and not exists (select 1 from pg_constraint c ' +
+		'join pg_class t on t.oid = c.conrelid ' +
+		'where c.conname = i.indexname and t.relname = i.tablename) ' +
+		'order by i.indexname'
+	)
 }
 
 export function buildCreateIndex(tableName: string, idx: IndexSpec): string {

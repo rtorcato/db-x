@@ -1,0 +1,106 @@
+---
+title: CockroachDB
+description: CockroachDB as a connection target for the Postgres library — what works, and why rollback does not.
+---
+
+# CockroachDB
+
+CockroachDB speaks the **Postgres wire protocol**, so it is a *connection
+target* for [`@db-x/postgres-library`](./postgres.mdx) rather than a library of
+its own. The same `<DatabaseTarget url={...}>` points at either; only the URL
+changes.
+
+Runnable example: [`examples/cockroachdb`](https://github.com/rtorcato/db-x/tree/main/examples/cockroachdb).
+
+:::warning Rollback is not supported here
+Every other engine snapshots before a destructive change. CockroachDB cannot —
+see [Why rollback does not work](#why-rollback-does-not-work). `db-x` refuses
+the change rather than pretending otherwise.
+:::
+
+## Connect
+
+```tsx
+import { Column, DatabaseTarget, Postgres, Table } from '@db-x/postgres-library'
+
+export default (
+  <DatabaseTarget url={process.env.DATABASE_URL}>
+    <Postgres name="todos-db" protect>
+      <Table name="todos">
+        <Column name="id" type="uuid" primaryKey default="gen_random_uuid()" />
+        <Column name="title" type="text" notNull />
+        <Column name="done" type="boolean" notNull default="false" />
+      </Table>
+    </Postgres>
+  </DatabaseTarget>
+)
+```
+
+A local single-node server is enough to try it:
+
+```sh
+docker run -d -p 26257:26257 -e COCKROACH_DATABASE=todos \
+  cockroachdb/cockroach:latest start-single-node --insecure
+```
+
+`apply` shells out to `psql`, which works against CockroachDB without
+modification.
+
+## What works
+
+Everything the [PostgreSQL page](./postgres.mdx) describes for schema
+management: tables, columns, indexes, seeds, the destructive-change gate, and
+`db-x refresh` drift detection. `<Postgres>` detects which engine answered by
+probing `select version()` on apply, and records it in state as `serverKind`.
+
+Note that CockroachDB's own DDL differs from Postgres' in places — generated
+primary keys are `gen_random_uuid()` rather than `serial`, for instance — so a
+schema written for one is not automatically valid on the other.
+
+## Why rollback does not work
+
+`pg_dump` is not supported against CockroachDB. It does not merely produce a
+questionable archive — it exits non-zero having written nothing:
+
+```
+$ pg_dump -U root -d todos --schema-only
+pg_dump: error: schema with OID 105 does not exist
+```
+
+Verified against **CockroachDB v26.2.4** with **pg_dump 17.10**, on both a real
+schema and a two-column throwaway table. `psql` is unaffected; it is the dump
+path specifically that has no support.
+
+So on a CockroachDB target `<Postgres>` publishes no snapshot driver at all, and
+a destructive apply stops:
+
+```
+■ Refusing destructive changes without a snapshot: CockroachDB has no snapshot
+  driver — it speaks the Postgres wire protocol, but pg_dump fails against it
+  ("schema with OID … does not exist"), so there is no archive to roll back to.
+  Take a native BACKUP first, then re-run with --no-snapshot.
+```
+
+Claiming `pg-dump` and hoping would be the worst failure a safety net can have:
+it looks like it worked.
+
+## Making a destructive change anyway
+
+Take a snapshot with CockroachDB's own tools, then opt out of the DB-X one:
+
+```sh
+cockroach sql --insecure \
+  -e "BACKUP DATABASE todos INTO 'nodelocal://1/todos-backup';"
+
+pnpm apply --yes --allow-destructive --no-snapshot
+```
+
+`BACKUP` to local storage needs `--external-io-dir` or a `nodelocal` path.
+
+A native `@db-x/snapshot-cockroachdb` driver over `BACKUP` / `SHOW CREATE` /
+`EXPORT` would close this gap — not built yet.
+
+## Next
+
+- [PostgreSQL](./postgres.mdx) — the library this target uses.
+- [Supabase](./supabase.mdx) — the other Postgres-compatible target.

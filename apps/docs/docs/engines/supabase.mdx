@@ -1,0 +1,85 @@
+---
+title: Supabase
+description: Manage a Supabase schema with DB-X — the Postgres components plus auth.users foreign keys and Row Level Security.
+---
+
+# Supabase
+
+Supabase is hosted Postgres, so the [`@db-x/postgres-library`](./postgres.mdx)
+components apply unchanged. What makes a schema *Supabase* is two things DB-X
+has no dedicated component for yet: a foreign key into the managed
+`auth.users` table, and Row Level Security.
+
+Runnable example: [`examples/supabase`](https://github.com/rtorcato/db-x/tree/main/examples/supabase).
+
+:::warning Experimental
+DB-X is an early prototype. Do not point it at a project you care about.
+:::
+
+## Connect
+
+Point `<DatabaseTarget>` at the project's Postgres connection string — the
+local stack from the Supabase CLI, or a hosted project:
+
+```sh
+brew install supabase/tap/supabase   # or https://supabase.com/docs/guides/cli
+supabase init                        # once
+supabase start                       # Postgres on :54322, plus auth/API/Studio
+```
+
+## Ownership and RLS
+
+There is no `<ForeignKey>` or `<Policy>` component, so both go through a
+`<SeedData>` block of idempotent raw SQL — `DROP … IF EXISTS` before each
+`CREATE`, so re-applying is safe:
+
+```tsx
+<Table name="todos">
+  <Column name="id" type="uuid" primaryKey default="gen_random_uuid()" />
+  <Column name="user_id" type="uuid" notNull />
+  <Column name="title" type="citext" notNull />
+</Table>
+
+<SeedData
+  name="rls-and-ownership"
+  dependsOn={['table:todos']}
+  sql={`
+    ALTER TABLE todos DROP CONSTRAINT IF EXISTS todos_user_id_fkey;
+    ALTER TABLE todos ADD CONSTRAINT todos_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE;
+
+    ALTER TABLE todos ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Users manage their own todos" ON todos;
+    CREATE POLICY "Users manage their own todos" ON todos
+      FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  `}
+/>
+```
+
+`dependsOn` is doing real work here. A seed's SQL is opaque to the runtime, so
+naming the table is the only way it knows this block is downstream of `todos` —
+which buys both the ordering and a re-run if that table is ever rebuilt, since a
+recreated table comes back without its policy.
+
+## Things worth knowing
+
+- **`auth.users` is not yours to manage.** Reference it; never declare it. It
+  belongs to Supabase's own migrations.
+- **RLS is off until you enable it.** A table without `ENABLE ROW LEVEL
+  SECURITY` is readable by any authenticated client through the API. Enabling it
+  with no policy denies everyone instead — both halves have to land.
+- **`citext` needs its extension.** Declare `<Extension name="citext" />` before
+  a column that uses it.
+
+## Safety
+
+Identical to [PostgreSQL](./postgres.mdx): destructive changes need
+`--allow-destructive`, `<Postgres protect>` refuses them outright, and a
+`pg_dump` snapshot is captured first. Against a hosted project the default
+`schema` snapshot mode is the safer default — `full` holds a transaction open
+for the length of the dump.
+
+## Next
+
+- [PostgreSQL](./postgres.mdx) — the underlying library.
+- [CockroachDB](./cockroachdb.mdx) — the other Postgres-compatible target.

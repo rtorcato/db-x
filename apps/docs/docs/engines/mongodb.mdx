@@ -1,0 +1,109 @@
+---
+title: MongoDB
+description: Manage MongoDB collections, indexes and JSON Schema validators as JSX — the document-store shape of DB-X.
+---
+
+# MongoDB
+
+The one engine here that isn't relational, and the JSX says so: there is no
+`<Table>`, no `<Column>` and no DDL. `@db-x/mongodb-library` manages the
+collection, its indexes, and its JSON Schema validator.
+
+Runnable example: [`examples/mongodb`](https://github.com/rtorcato/db-x/tree/main/examples/mongodb).
+
+:::warning Experimental
+DB-X is an early prototype. Do not point it at a database you care about.
+:::
+
+## Connect
+
+One component does what `<DatabaseTarget>` and `<Postgres>` do together — one
+URI, one tool (`mongosh`):
+
+```tsx
+import { Collection, Index, Mongo, SeedData } from '@db-x/mongodb-library'
+
+export default (
+  <Mongo name="todos-db" url={process.env.MONGODB_URL} database="todos" protect>
+    <Collection
+      name="todos"
+      validator={{
+        $jsonSchema: {
+          bsonType: 'object',
+          required: ['title', 'done'],
+          properties: {
+            title: { bsonType: 'string' },
+            done: { bsonType: 'bool' },
+          },
+        },
+      }}
+      validationLevel="strict"
+      validationAction="error"
+    >
+      <Index name="idx_todos_done" keys={{ done: 1 }} />
+    </Collection>
+  </Mongo>
+)
+```
+
+`apply` shells out to `mongosh`, which does **not** ship with the server —
+[install it separately](https://www.mongodb.com/docs/mongodb-shell/install/).
+
+## Components
+
+| Component | What it manages |
+| --- | --- |
+| `<Mongo url database>` | Connection and target database. Both roles in one component. |
+| `<Collection>` | The collection, its validator, and its `<Index>` children. |
+| `<Index keys>` | A named index. `keys` is a direction map (`{ done: 1 }`), optionally `unique`, `partialFilterExpression`, `expireAfterSeconds`. |
+| `<SeedData js>` | Idempotent mongosh JS. |
+
+## How it differs from the SQL engines
+
+- **The validator replaces the column list.** `NOT NULL` and type constraints
+  become a `$jsonSchema` validator applied with `collMod`. Existing documents
+  keep their shape — a validator only constrains writes.
+- **Seeds are JS, not SQL.** Mongo has no `ON CONFLICT DO NOTHING`, so use
+  `updateOne(…, { upsert: true })` or a unique index for idempotency.
+- **Explicit database binding.** Every statement runs against
+  `getSiblingDB(<Mongo database>)`, exposed to your seed JS as `dbx`. The URI's
+  default database never decides where a change lands.
+
+## What the diff does
+
+Indexes are compared by **shape**, not just name: an index whose keys, `unique`,
+partial filter or TTL changed is dropped and recreated, since `createIndex` is a
+no-op against a name that already exists.
+
+Validator changes go through `collMod`, and a **tightening** is classified
+destructive — raising the enforcement level, switching `warn` to `error`, or
+requiring more fields can all stop existing documents from being updatable.
+The check is a heuristic: it does not compare property subschemas, so a narrowed
+`enum` buried inside `properties` reads as non-destructive. `protect` is the
+backstop.
+
+## Safety
+
+Destructive changes need `--allow-destructive`, and `<Mongo protect>` refuses
+them outright. Before one runs, DB-X captures a `mongodump` archive into
+`.dbx/`. Dropping an index is itself classified destructive — rebuilding one on
+a large collection can take hours.
+
+## Drift
+
+`db-x refresh` reads `getCollectionNames()` and `getIndexes()`, so an index
+dropped behind DB-X's back becomes a change `preview` can plan.
+
+A collection that has been dropped entirely is recorded as `missing` rather than
+merely index-less — declaring zero indexes is legal, and the repair differs: a
+missing collection needs `createCollection`, which is the only path that
+restores the validator.
+
+Index **names** are compared, and the built-in `_id_` is ignored — it is created
+with every collection and cannot be dropped, so counting it would make every
+refresh report a change.
+
+## Next
+
+- [PostgreSQL](./postgres.mdx) — the relational shape, for comparison.
+- [Examples](../examples.mdx) — every runnable example in the repo.

@@ -7,6 +7,18 @@ package tracks its own version in its `package.json`.
 
 ### Fixed
 
+- **A changed `<Index>` is no longer silently ignored.** `diffTable` compared
+  indexes by *name* only, so editing an existing index's `columns` or `unique`
+  planned nothing: the name was still declared so no drop was emitted, and the
+  always-run `CREATE INDEX IF NOT EXISTS` saw the surviving name and did nothing.
+  `apply` then recorded the new props in `outputs`, leaving state claiming an
+  index the database never built. Both SQL libraries now compare an index's
+  shape and emit an explicit `DROP INDEX` + recreate, classified destructive, so
+  the `--allow-destructive` gate and the pre-flight snapshot cover the rebuild.
+  A prior index with no recorded columns — what sqlite's `refresh` writes for one
+  it never saw authored — counts as unknown rather than changed, so it isn't
+  rebuilt on every apply.
+
 - **State no longer records changes that never ran.** When a diff produced no
   SQL but the props had moved, `apply` still persisted the *desired* columns
   into `outputs` — so state described a database that didn't exist, and because

@@ -399,6 +399,8 @@ export interface TableDiff {
 	additions: ColumnSpec[]
 	/** Names of indexes present in prior state but no longer declared. */
 	droppedIndexes: string[]
+	/** Same name, different columns/unique — dropped and recreated. */
+	changedIndexes: IndexSpec[]
 	/** Names of columns present in prior state but no longer declared. */
 	droppedColumns: string[]
 	/** SQL statements in apply order. */
@@ -413,8 +415,17 @@ export interface TableDiff {
 function summarize(diff: TableDiff): string {
 	return (
 		`${diff.renames.length} rename(s), ${diff.additions.length} addition(s), ` +
-		`${diff.droppedIndexes.length} index drop(s), ${diff.droppedColumns.length} column drop(s)`
+		`${diff.droppedIndexes.length} index drop(s), ${diff.changedIndexes.length} index change(s), ` +
+		`${diff.droppedColumns.length} column drop(s)`
 	)
+}
+
+/**
+ * Index identity for change detection — the fields that define what the index
+ * covers. `description` is documentation, so it is deliberately excluded.
+ */
+function indexShape(i: IndexSpec): string {
+	return JSON.stringify([i.columns, !!i.unique])
 }
 
 /** A statement that drops a schema object. */
@@ -458,9 +469,21 @@ export function diffTable(
 		assertNoUnsupportedAlter(tableName, c, priorSpec)
 	}
 
-	// 4. Removed indexes.
+	// 4. Removed and changed indexes.
 	const nextIndexNames = new Set(nextIndexes.map((i) => i.name))
 	const droppedIndexes = prior.indexes.filter((i) => !nextIndexNames.has(i.name)).map((i) => i.name)
+	const priorIndexByName = new Map(prior.indexes.map((i) => [i.name, i]))
+	// An index whose name survives but whose definition moved: the create loop's
+	// `CREATE INDEX IF NOT EXISTS` sees the name and does nothing, so the change
+	// needs an explicit drop first.
+	const changedIndexes = nextIndexes.filter((i) => {
+		const p = priorIndexByName.get(i.name)
+		// `refresh` records `{ name, columns: [] }` for an index it never saw
+		// authored (PRAGMA index_list has no column info) — an unknown shape, not
+		// a changed one. Comparing it would drop and rebuild on every apply.
+		if (!p || p.columns.length === 0) return false
+		return indexShape(p) !== indexShape(i)
+	})
 
 	// 5. Removed columns — in prior state, no longer declared, and not the
 	//    source side of a rename (that column lives on under its new name).
@@ -479,13 +502,19 @@ export function diffTable(
 		...additions.map((c) => `ALTER TABLE "${tableName}" ADD COLUMN ${columnSql(c)}`),
 		// Index drops first: SQLite refuses to drop a column an index still covers.
 		...droppedIndexes.map((n) => `DROP INDEX IF EXISTS "${n}"`),
+		...changedIndexes.map((i) => `DROP INDEX IF EXISTS "${i.name}"`),
 		...droppedColumns.map((n) => `ALTER TABLE "${tableName}" DROP COLUMN "${n}"`),
+		// Recreated last, once every column it can reference exists. `apply`'s
+		// create loop would cover this too; emitting it here is what makes
+		// `preview` show the whole change.
+		...changedIndexes.map((i) => buildCreateIndex(tableName, i)),
 	]
 
 	return {
 		renames: renames.map((c) => ({ from: c.from as string, to: c.name })),
 		additions,
 		droppedIndexes,
+		changedIndexes,
 		droppedColumns,
 		sql,
 		destructive: sql.filter(isDestructiveSql),

@@ -124,6 +124,82 @@ describe('diffTable — indexes', () => {
 		expect(diff.droppedIndexes).toEqual([])
 		expect(diff.sql).toEqual([])
 	})
+
+	// The bug: the diff compared index names only, so a changed definition
+	// produced no SQL — and `CREATE INDEX IF NOT EXISTS` saw the surviving name
+	// and did nothing, leaving the old index live while state claimed the new one.
+	it('drops and recreates an index whose columns changed', () => {
+		const a = col({ name: 'a', type: 'int' })
+		const b = col({ name: 'b', type: 'int' })
+		const diff = diffTable(
+			't',
+			[a, b],
+			[{ name: 'idx', columns: ['a', 'b'] }],
+			prior([a, b], [{ name: 'idx', columns: ['a'] }])
+		)
+		expect(diff.changedIndexes).toEqual([{ name: 'idx', columns: ['a', 'b'] }])
+		expect(diff.sql).toEqual([
+			'DROP INDEX IF EXISTS "idx"',
+			'CREATE INDEX IF NOT EXISTS "idx" ON "t" ("a", "b")',
+		])
+		expect(diff.destructive).toEqual(['DROP INDEX IF EXISTS "idx"'])
+	})
+
+	it('drops and recreates an index whose unique flag flipped', () => {
+		const a = col({ name: 'a', type: 'int' })
+		const diff = diffTable(
+			't',
+			[a],
+			[{ name: 'idx', columns: ['a'], unique: true }],
+			prior([a], [{ name: 'idx', columns: ['a'] }])
+		)
+		expect(diff.sql).toEqual([
+			'DROP INDEX IF EXISTS "idx"',
+			'CREATE UNIQUE INDEX IF NOT EXISTS "idx" ON "t" ("a")',
+		])
+	})
+
+	it('ignores a description-only change', () => {
+		const a = col({ name: 'a', type: 'int' })
+		const diff = diffTable(
+			't',
+			[a],
+			[{ name: 'idx', columns: ['a'], description: 'new words' }],
+			prior([a], [{ name: 'idx', columns: ['a'], description: 'old words' }])
+		)
+		expect(diff.changedIndexes).toEqual([])
+		expect(diff.sql).toEqual([])
+	})
+
+	// `refresh` records `{ name, columns: [] }` for an index it never saw
+	// authored — PRAGMA index_list has no column info. Treating that unknown
+	// shape as "changed" would rebuild the index on every apply.
+	it('leaves an index with an unknown prior shape alone', () => {
+		const a = col({ name: 'a', type: 'int' })
+		const diff = diffTable(
+			't',
+			[a],
+			[{ name: 'idx', columns: ['a'] }],
+			prior([a], [{ name: 'idx', columns: [] }])
+		)
+		expect(diff.changedIndexes).toEqual([])
+		expect(diff.sql).toEqual([])
+	})
+
+	it('recreates a changed index after a column drop, not before', () => {
+		const a = col({ name: 'a', type: 'int' })
+		const diff = diffTable(
+			't',
+			[a],
+			[{ name: 'idx', columns: ['a'] }],
+			prior([a, col({ name: 'gone', type: 'int' })], [{ name: 'idx', columns: ['gone'] }])
+		)
+		expect(diff.sql).toEqual([
+			'DROP INDEX IF EXISTS "idx"',
+			'ALTER TABLE "t" DROP COLUMN "gone"',
+			'CREATE INDEX IF NOT EXISTS "idx" ON "t" ("a")',
+		])
+	})
 })
 
 describe('diffTable — dropped columns', () => {

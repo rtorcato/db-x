@@ -57,6 +57,10 @@ export function TodosSchema(props: TodosSchemaProps) {
 
 			<SeedData
 				name="initial-todos"
+				// The documents live in `todos`, so the seed is downstream of it. The
+				// JS is opaque to the runtime — declaring the edge is what orders the
+				// two AND re-runs this seed when the collection is rebuilt empty.
+				dependsOn={['collection:todos']}
 				description="Demo documents for first-run local installs"
 				js={`
           for (const doc of [

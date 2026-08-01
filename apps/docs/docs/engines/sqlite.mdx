@@ -1,0 +1,102 @@
+---
+title: SQLite
+description: Apply a DB-X schema to a local SQLite file — no server, no credentials, with file-copy snapshots.
+---
+
+# SQLite
+
+The file *is* the database, so there is no connection URL, no credentials and no
+container. That makes `@db-x/sqlite-library` the fastest way to try DB-X — and
+the strictest about what a diff can express, because SQLite's `ALTER TABLE` is
+far narrower than Postgres'.
+
+Runnable example: [`examples/sqlite`](https://github.com/rtorcato/db-x/tree/main/examples/sqlite).
+
+:::warning Experimental
+DB-X is an early prototype. Do not point it at a database you care about.
+:::
+
+## Connect
+
+```tsx
+import { Column, Index, Sqlite, Table } from '@db-x/sqlite-library'
+
+export default (
+  <Sqlite name="todos-db" file="./todos.db">
+    <Table name="todos">
+      <Column name="id" type="integer" primaryKey />
+      <Column name="title" type="text" notNull />
+      <Column name="done" type="integer" notNull default="0" />
+      <Index name="idx_todos_done" columns={['done']} />
+    </Table>
+  </Sqlite>
+)
+```
+
+`apply` shells out to `sqlite3`, so it needs `sqlite3` on your `PATH`.
+`preview` renders and diffs offline — it does not touch the file.
+
+## Components
+
+| Component | What it manages |
+| --- | --- |
+| `<Sqlite file>` | The database file. No user/database split — the path is the whole connection. |
+| `<Table>` | The table, with `<Column>` and `<Index>` children. |
+| `<Column>` | Name, type, `notNull`, `unique`, `default`, and `from` for renames. |
+| `<Index>` | A named index over one or more columns, optionally `unique`. |
+| `<SeedData>` | Raw idempotent SQL. |
+
+Friendly type names are resolved to SQLite storage classes, so `serial`,
+`boolean`, `uuid` and `timestamptz` are accepted and stored as `INTEGER` or
+`TEXT`. `serial` + `primaryKey` becomes `INTEGER PRIMARY KEY AUTOINCREMENT`.
+
+## What the diff cannot do
+
+**SQLite has no `ALTER COLUMN` at all.** Changing a column's type, default or
+nullability needs a create-copy-drop-rename table rebuild, which is not
+implemented yet ([#56](https://github.com/rtorcato/db-x/issues/56)). Rather than
+emit SQL that cannot run, the plan fails with an explicit message:
+
+```
+SQLite can't ALTER COLUMN "title" on table "todos" (type change);
+needs a table rebuild — not supported yet.
+```
+
+Adding, renaming and dropping columns all work, as do index changes. Two further
+refusals exist because SQLite itself would reject the statement mid-apply — a
+`DROP COLUMN` is refused at plan time when the column is a primary key, carries
+a `UNIQUE` constraint, or is still covered by a declared index. Dropping that
+index in the same edit is fine: the `DROP INDEX` is emitted first.
+
+`default` is raw SQL, so a literal string carries its own quotes —
+`default="'blue'"`, not `default="blue"`. The unquoted form is rejected at plan
+time with the exact replacement in the message, because SQLite would otherwise
+accept it and then fail with *"default value of column is not constant"*.
+
+## Safety
+
+Destructive changes need `--allow-destructive`. Before one runs, DB-X copies the
+database file into `.dbx/snapshots` via `sqlite3 .backup` — a full copy every
+time, structure and rows, since SQLite has no schema-only equivalent.
+
+```sh
+sqlite3 todos.db "select * from todos;"   # inspect at any point
+pnpm apply --yes --allow-destructive      # snapshots first, then applies
+pnpm restore --yes                        # roll the file back
+```
+
+## Drift
+
+`db-x refresh` reads `PRAGMA table_info` and `PRAGMA index_list` through
+`sqlite3 -readonly`. The read-only flag is load-bearing: plain
+`sqlite3 missing.db` *creates* an empty database, so a drift check without it
+would quietly manufacture the very file it was asked to look for.
+
+Deleting the `.db` file is therefore reported honestly as "the table is gone",
+and `preview` plans a fresh `CREATE TABLE` rather than an `ALTER` against
+nothing.
+
+## Next
+
+- [PostgreSQL](./postgres.mdx) — the same schema shape with full `ALTER` support.
+- [Examples](../examples.mdx) — every runnable example in the repo.

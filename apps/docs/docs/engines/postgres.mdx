@@ -1,0 +1,103 @@
+---
+title: PostgreSQL
+description: Apply a DB-X schema to any Postgres — tables, columns, indexes, extensions and roles, with snapshot-backed rollback.
+---
+
+# PostgreSQL
+
+The reference engine. `@db-x/postgres-library` manages tables, columns, indexes,
+extensions and roles, and is also what drives the two Postgres-compatible
+targets — [Supabase](./supabase.mdx) and [CockroachDB](./cockroachdb.mdx).
+
+Runnable example: [`examples/postgres`](https://github.com/rtorcato/db-x/tree/main/examples/postgres).
+
+:::warning Experimental
+DB-X is an early prototype. Do not point it at a database you care about.
+:::
+
+## Connect
+
+Two components, deliberately separate. `<DatabaseTarget>` says *where the server
+is*; `<Postgres>` says *which logical database*, and republishes the connection
+so every child works the same way regardless of how the server was reached.
+
+```tsx
+import { Column, DatabaseTarget, Postgres, Table } from '@db-x/postgres-library'
+
+export default (
+  <DatabaseTarget url={process.env.DATABASE_URL}>
+    <Postgres name="todos-db" protect>
+      <Table name="todos">
+        <Column name="id" type="serial" primaryKey />
+        <Column name="title" type="text" notNull />
+        <Column name="done" type="boolean" notNull default="false" />
+      </Table>
+    </Postgres>
+  </DatabaseTarget>
+)
+```
+
+`apply` shells out to `psql`, so it needs `psql` on your `PATH` and a reachable
+server. `preview` renders and diffs offline — it never connects.
+
+## Components
+
+| Component | What it manages |
+| --- | --- |
+| `<DatabaseTarget url>` | Connection to an existing server. Publishes the spawn template children run through. |
+| `<Postgres>` | The logical database. Carries `protect` and the `snapshot` mode. |
+| `<Extension>` | `CREATE EXTENSION` (`pgcrypto`, `citext`, …). |
+| `<Table>` | The table, with `<Column>` and `<Index>` children. |
+| `<Column>` | Name, type, `notNull`, `unique`, `default`, and `from` for renames. |
+| `<Index>` | A named index over one or more columns, optionally `unique`. |
+| `<SeedData>` | Raw idempotent SQL. |
+| `<DbUser>` | A role with grants. |
+
+## What the diff can do
+
+Postgres has the fullest `ALTER TABLE` support of any engine here, so the diff
+expresses almost every change in place:
+
+- **Renames** — `<Column from="old_name">`. Without it a rename is
+  indistinguishable from a drop plus an add, and the diff would take the
+  destructive reading.
+- **Attribute changes** — type, default, `NOT NULL` and `UNIQUE` become
+  `ALTER COLUMN` / `ADD CONSTRAINT` statements.
+- **Index changes** — an index whose columns or `unique` flag moved is dropped
+  and recreated; one that is no longer declared is dropped.
+- **Dropped columns** — `ALTER TABLE … DROP COLUMN`, classified destructive.
+
+## Safety
+
+Destructive statements (`DROP`, `ALTER TYPE`, …) are gated twice:
+
+1. `apply` refuses them unless you pass `--allow-destructive`.
+2. `<Postgres protect>` refuses them **even then** — you must remove `protect`
+   from the JSX. This is the in-code lock, the Terraform `prevent_destroy`
+   equivalent.
+
+Before any destructive apply, DB-X captures a `pg_dump` snapshot into `.dbx/`
+and refuses to proceed if it cannot. `<Postgres snapshot="full">` captures rows
+as well as structure — the default `schema` restores the shape of a dropped
+column but not the data that was in it.
+
+```sh
+pnpm apply --yes --allow-destructive  # snapshots first, then applies
+pnpm restore --yes                    # roll back to that snapshot
+```
+
+## Drift
+
+`db-x refresh` reads `information_schema.columns` and `pg_indexes` and writes
+what it finds into state, so a column dropped behind DB-X's back becomes a
+change `preview` can plan and `apply` can repair.
+
+It compares column and index **names**, not types or defaults. That catches what
+actually happens out of band and avoids churning on Postgres' own spellings —
+`serial` reads back as `integer`, and a default comes back as `'blue'::text`.
+
+## Next
+
+- [Supabase](./supabase.mdx) — the same components against hosted Postgres, plus RLS.
+- [CockroachDB](./cockroachdb.mdx) — same wire protocol, no snapshot support.
+- [Quickstart (Docker)](../getting-started/quickstart-docker.mdx) — run it against a throwaway container.

@@ -1,32 +1,67 @@
 ---
 title: Examples
-description: A runnable DB-X demo that applies the same Postgres schema two ways — against a managed database and against a Compose-hosted one.
+description: Every runnable DB-X example in the repo — Postgres, SQLite, MongoDB, CockroachDB and Supabase.
 ---
 
 # Examples
 
-The canonical DB-X example is [`examples/postgres`](https://github.com/rtorcato/db-x/tree/main/examples/postgres)
-in the repo — a runnable project that applies a `todos` schema to Postgres with
-the standalone `db-x` CLI.
+Each example is a self-contained project that applies a `todos` schema with the
+standalone `db-x` CLI. They all follow the same shape: `schema.tsx` holds a
+reusable component, `dbx.tsx` wires the connection around it.
 
 :::warning Experimental
 DB-X is an early prototype. Do not point it at a database you care about.
 :::
 
-## `examples/postgres` — standalone DB-X
+## Runnable today
 
-The schema (a `todos` table) is imported from `@db-x/postgres-library` and
-connected via `<DatabaseTarget url={...}>`, so `db-x` runs it against any
-Postgres — no Infra-X involved:
-
-| File | Runtime parent | CLI | Use case |
+| Example | Library | Engine page | Needs |
 | --- | --- | --- | --- |
-| [`dbx.tsx`](https://github.com/rtorcato/db-x/tree/main/examples/postgres/dbx.tsx) | `<DatabaseTarget url={...}>` | `db-x` | Points at any Postgres via a `postgres://` URL — a local container or a managed DB. |
+| [`examples/postgres`](https://github.com/rtorcato/db-x/tree/main/examples/postgres) | `@db-x/postgres-library` | [PostgreSQL](./engines/postgres.mdx) | `psql`, Docker |
+| [`examples/sqlite`](https://github.com/rtorcato/db-x/tree/main/examples/sqlite) | `@db-x/sqlite-library` | [SQLite](./engines/sqlite.mdx) | `sqlite3` |
+| [`examples/mongodb`](https://github.com/rtorcato/db-x/tree/main/examples/mongodb) | `@db-x/mongodb-library` | [MongoDB](./engines/mongodb.mdx) | `mongosh`, Docker |
+| [`examples/cockroachdb`](https://github.com/rtorcato/db-x/tree/main/examples/cockroachdb) | `@db-x/postgres-library` | [CockroachDB](./engines/cockroachdb.mdx) | `psql`, Docker |
+| [`examples/supabase`](https://github.com/rtorcato/db-x/tree/main/examples/supabase) | `@db-x/postgres-library` | [Supabase](./engines/supabase.mdx) | Supabase CLI, Docker |
 
-The bundled [`docker-compose.yml`](https://github.com/rtorcato/db-x/tree/main/examples/postgres/docker-compose.yml)
-provides a throwaway Postgres to apply against; or set `DATABASE_URL` to an
-existing one.
+[`examples/sqlite`](https://github.com/rtorcato/db-x/tree/main/examples/sqlite)
+is the quickest start: the file is the database, so there is no server, no
+credentials and no container.
 
-Follow the [Quickstart (Docker)](./getting-started/quickstart-docker.mdx) to run
-it against a local Postgres, then read [Time Machine](./concepts/time-machine.mdx)
-for snapshots and rollback (on the roadmap).
+## Engine support at a glance
+
+| Engine | Snapshot driver | Drift detection | Notable limit |
+| --- | --- | --- | --- |
+| PostgreSQL | `pg_dump` (schema or full) | yes | — |
+| SQLite | file copy (always full) | yes | no `ALTER COLUMN` — needs a table rebuild ([#56](https://github.com/rtorcato/db-x/issues/56)) |
+| MongoDB | `mongodump` | yes | validator tightening detected heuristically |
+| CockroachDB | **none** | yes | `pg_dump` unsupported, so no rollback ([#85](https://github.com/rtorcato/db-x/issues/85)) |
+| Supabase | `pg_dump` (schema or full) | yes | `auth.users` and RLS are raw SQL, not components |
+
+## Not built yet
+
+`examples/` also holds README-only placeholders for CouchDB, DuckDB, MySQL,
+Oracle and SQL Server. They describe the intended shape and link to the issue
+tracking the library each would need — there is nothing to run yet.
+
+## The loop
+
+Every runnable example supports the same cycle:
+
+```sh
+pnpm install && pnpm build            # from the repo root, once
+cd examples/<engine>
+pnpm preview                          # render, diff, print the exact statements
+pnpm apply --yes                      # execute them, persist state to .dbx/
+pnpm apply --yes --allow-destructive  # snapshot first, then apply
+pnpm restore --yes                    # roll back to that snapshot
+pnpm destroy                          # tear it down in reverse order
+```
+
+`preview` renders and diffs offline — it never connects to a database. `apply`
+refuses a destructive change unless you pass `--allow-destructive`, and refuses
+again if it cannot capture a snapshot first, so there is always something to
+roll back to. CockroachDB is the one target where that second gate never opens.
+
+Start with the [Quickstart (Docker)](./getting-started/quickstart-docker.mdx),
+then read [Time Machine](./concepts/time-machine.mdx) for how snapshots and
+rollback work.

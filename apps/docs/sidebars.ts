@@ -24,6 +24,17 @@ const sidebars: SidebarsConfig = {
 		},
 		{
 			type: "category",
+			label: "Engines",
+			items: [
+				"engines/postgres",
+				"engines/sqlite",
+				"engines/mongodb",
+				"engines/cockroachdb",
+				"engines/supabase",
+			],
+		},
+		{
+			type: "category",
 			label: "Reference",
 			items: ["reference/components", "reference/cli"],
 		},

@@ -4,11 +4,18 @@ description: How to move existing Infra-X schema definitions over to @db-x/postg
 ---
 
 DB-X grew out of the work the `@infra-x/postgres-library` reference library
-needed. Once DB-X ships its first stable release the Infra-X-side Postgres
-library is deprecated and eventually removed — tracked by
-[issue #24](https://github.com/rtorcato/infra-x/issues/24).
+needed, and has since become a separate project with its own vendored runtime.
+Whether and when the Infra-X-side Postgres library is deprecated is Infra-X's
+call — tracked upstream in
+[infra-x#24](https://github.com/rtorcato/infra-x/issues/24).
 
-The migration is mostly **import swap + parent swap** and runs in three steps.
+:::caution
+DB-X is `0.1.0-alpha.0` and **not ready for real data**. Treat this as a guide
+for trying DB-X alongside an existing setup, not for moving a production
+deployment onto it.
+:::
+
+The migration is **import swap + parent swap + CLI swap**.
 
 ## 1. Swap the imports
 
@@ -27,28 +34,23 @@ The migration is mostly **import swap + parent swap** and runs in three steps.
 + } from '@db-x/postgres-library';
 ```
 
-The component names and prop shapes match for the v0.x surface. New props
-specific to DB-X (richer column diff, `<DatabaseTarget>`, snapshot annotations)
+The component names and prop shapes match for the v0.x surface. Props specific
+to DB-X — `<DatabaseTarget>`, `from=` column renames, `protect`, `snapshot` —
 are additive.
+
+You also need the JSX pragma pointing at DB-X's runtime, since it is no longer
+the same package:
+
+```tsx
+/** @jsxImportSource @db-x/runtime */
+```
 
 ## 2. Swap the parent
 
-Old Infra-X library assumed a `<Service>` running Postgres in Compose. DB-X
-gives you both options — use whichever fits the deployment target.
-
-### Compose target (local dev / CI)
-
-Keep the existing `<Service>` parent; nothing else changes:
-
-```tsx
-<Service image="postgres:16-alpine" env={PG_ENV}>
-  <Postgres name="todos-db">{/* tables */}</Postgres>
-</Service>
-```
-
-### Managed target (production)
-
-Replace the `<Service>` parent with `<DatabaseTarget>`:
+The Infra-X library assumed a `<Service>` running Postgres in Compose. **DB-X
+does not ship a `<Service>` component** — it never manages the database server
+lifecycle, only the schema. `<DatabaseTarget>` is the parent in both cases; only
+the URL changes.
 
 ```tsx
 <DatabaseTarget url={process.env.DATABASE_URL!}>
@@ -56,24 +58,36 @@ Replace the `<Service>` parent with `<DatabaseTarget>`:
 </DatabaseTarget>
 ```
 
-## 3. Swap the CLI (once DB-X ships)
+Point it at a local container for dev and CI (see the
+[Docker quickstart](../getting-started/quickstart-docker.mdx)) or at a managed
+instance for production (see the
+[managed quickstart](../getting-started/quickstart-managed.mdx)). Bring the
+container up however you already do — Compose, `docker run`, Testcontainers.
+DB-X connects to it; it does not start it.
 
-While the `db-x` CLI is in flight, keep using `infra-x apply` — DB-X
-components are still `defineComponent` resources on the same runtime. When
-`db-x` ships, switch over to pick up snapshot, restore, history, diff, and the
-MCP server.
+## 3. Swap the CLI
+
+The `db-x` CLI has shipped. This step is required, not optional: DB-X vendored
+the runtime, so `@db-x/postgres-library` components are **not** loadable by
+`infra-x apply` — they register against `@db-x/runtime`, a different package.
 
 ```diff
 - pnpm infra-x apply ./infra.tsx
 + pnpm db-x apply ./dbx.tsx
 ```
 
-## Deprecation timeline
+Shipped today: `preview` · `apply` · `refresh` · `destroy` · `restore` ·
+`state` · `describe`. Still planned: `snapshot` / `history` / `diff`
+([#6](https://github.com/rtorcato/db-x/issues/6)) and the MCP server
+([#9](https://github.com/rtorcato/db-x/issues/9)) — see the
+[roadmap](../about/roadmap.mdx).
 
-| When | What |
-| --- | --- |
-| **DB-X v0.0–v0.1** | `@infra-x/postgres-library` keeps shipping. No deprecation notice. |
-| **DB-X v0.1 / Infra-X v0.2** | `@infra-x/postgres-library` README adds a "use `@db-x/postgres-library`" banner. Examples in this repo migrate. |
-| **DB-X v1.0 / Infra-X v0.3** | `@infra-x/postgres-library` deleted from the workspace. |
+## Running both
 
-`@infra-x/php-library` is unrelated (PHP image builder, not a database) and stays.
+Nothing stops you keeping Infra-X for the rest of your infrastructure and using
+`db-x` for the database. They are separate binaries reading separate files, with
+separate state — DB-X keeps its own in `.dbx/`. What you cannot do is mix
+components from the two runtimes inside one tree.
+
+`@infra-x/php-library` is unrelated (a PHP image builder, not a database) and is
+unaffected either way.

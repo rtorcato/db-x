@@ -9,8 +9,9 @@ sidebar_position: 0
 
 **Production-grade database schema deployment, with a Time Machine and AI review.**
 
-DB-X is a schema deployment and migration tool built on the [Infra-X](https://infra-x.dev)
-runtime. Same JSX-as-IaC mental model, specialised for relational databases:
+DB-X is a schema deployment and migration tool with its own JSX runtime,
+[forked from Infra-X](https://infra-x.dev). Same JSX-as-IaC mental model,
+specialised for relational databases:
 write your schema declaratively, preview the change, apply it with snapshots and
 rollback, and let an AI agent review it before it ships.
 
@@ -30,19 +31,17 @@ import { Column, Postgres, Table } from '@db-x/postgres-library';
 </Postgres>;
 ```
 
-## Standalone, or composed with Infra-X
+## Standalone
 
-You run DB-X on its own with the `db-x` CLI: a schema file uses
+DB-X runs on its own with the `db-x` CLI: a schema file uses
 `<DatabaseTarget url={...}>` to point at any Postgres — a local container or a
-managed DB — and `db-x apply` runs the DDL. No Infra-X required.
-
-Because `@db-x/runtime` re-exports the Infra-X runtime, the *same* schema
-components can also drop inside an Infra-X `<Service>` tree if you already use
-Infra-X — but that's optional, not the default.
+managed DB — and `db-x apply` runs the DDL. There is no Infra-X dependency in
+the tree; `@db-x/runtime` is DB-X's own runtime, forked and now maintained
+separately.
 
 ## Packages
 
-DB-X is a small set of packages built on the Infra-X runtime (not on npm yet —
+DB-X is a small set of packages built on `@db-x/runtime` (not on npm yet —
 see [Install](./getting-started/install.mdx)). Each component is created with
 `defineComponent`; import a package and its components register automatically.
 

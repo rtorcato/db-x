@@ -43,31 +43,42 @@ with drift detection — but only once rollback, DB-side locking, and history la
 
 | Gap | Severity | Issue |
 |---|---|---|
-| Rollback coded (`SnapshotDriver.restore()`) but **no CLI command calls it** | High | [#58](https://github.com/rtorcato/db-x/issues/58) (child of [#6](https://github.com/rtorcato/db-x/issues/6)) |
+| **Plan never reads the live DB** — diffs JSX against a gitignored `.dbx/state.json`, so in CI every guard is inert | High (foundational) | [#113](https://github.com/rtorcato/db-x/issues/113) |
+| **No integration tests** — generated DDL is never executed against a real engine | High | [#115](https://github.com/rtorcato/db-x/issues/115) |
 | Destructive detection is a **fragile SQL regex** — misses `DROP POLICY`, `DETACH PARTITION`, … | High | [#59](https://github.com/rtorcato/db-x/issues/59) |
 | **No DB-side lock** — local `.dbx/state.lock` only covers one working dir | High | [#60](https://github.com/rtorcato/db-x/issues/60) |
-| **No transactional/atomic apply** — index creates are separate `psql -c` calls | Medium | [#61](https://github.com/rtorcato/db-x/issues/61) |
 | **No lock-safe / zero-downtime DDL** — the real competitive wedge, ~0% built | High (strategic) | [#62](https://github.com/rtorcato/db-x/issues/62) |
+| **No TLS control** — the connection URL's query string is silently dropped | High | [#114](https://github.com/rtorcato/db-x/issues/114) |
+| **Engine version probed then discarded** — plans can emit DDL the target rejects | Medium | [#119](https://github.com/rtorcato/db-x/issues/119), [#120](https://github.com/rtorcato/db-x/issues/120) |
+| **No transactional/atomic apply** — index creates are separate `psql -c` calls | Medium | [#61](https://github.com/rtorcato/db-x/issues/61) |
 | **No environment concept** — dev/prod is just whichever URL env vars resolve to | Medium | [#63](https://github.com/rtorcato/db-x/issues/63) (child of [#11](https://github.com/rtorcato/db-x/issues/11)) |
 | No schema **linting** for unsafe-but-not-destructive changes | Medium | [#64](https://github.com/rtorcato/db-x/issues/64) |
-| Docs drift: README lists 3 packages (ships 5); GOALS advertises unbuilt CLI verbs | Low | [#65](https://github.com/rtorcato/db-x/issues/65) |
-| Restore / history / diff CLI (time machine) | — | [#6](https://github.com/rtorcato/db-x/issues/6) |
+| No **machine-readable plan** or CI exit-code contract | Medium | [#117](https://github.com/rtorcato/db-x/issues/117) |
+| Snapshot/history/diff CLI (rest of the time machine) | — | [#6](https://github.com/rtorcato/db-x/issues/6) |
 | MCP AI-review server | — | [#9](https://github.com/rtorcato/db-x/issues/9) |
 | Multi-env / managed drivers | — | [#11](https://github.com/rtorcato/db-x/issues/11) |
 | Sharding / large-scale (discussion) | — | [#47](https://github.com/rtorcato/db-x/issues/47) |
 
+`db-x restore` has shipped ([#58](https://github.com/rtorcato/db-x/issues/58)),
+so rollback is wired end to end. What it restores is bounded by the snapshot
+mode: the default `schema` brings back structure and not row data.
+
 ## Prioritized roadmap
 
-Ordered by ROI — cheapest credibility wins first, the strategic wedge in the middle:
+Ordered by ROI, with the foundation before the wedge:
 
-1. **Wire `db-x restore`** ([#58](https://github.com/rtorcato/db-x/issues/58)) — ~90% built and tested; unlocks the rollback story immediately.
-2. **Harden destructive detection** ([#59](https://github.com/rtorcato/db-x/issues/59)) — structured classification, not regex; makes the prod guards trustworthy.
-3. **Postgres advisory lock** ([#60](https://github.com/rtorcato/db-x/issues/60)) — real multi-runner CI safety.
-4. **Lock-safe / zero-downtime DDL** ([#62](https://github.com/rtorcato/db-x/issues/62)) — the wedge vs pgroll/Reshape/Atlas. Highest strategic value.
-5. **Dev/prod target profiles** ([#63](https://github.com/rtorcato/db-x/issues/63)) — closes the "no environment" gap.
-6. **Schema linting** ([#64](https://github.com/rtorcato/db-x/issues/64)) — Atlas `migrate lint` parity; builds on #59.
-7. **Transactional apply** ([#61](https://github.com/rtorcato/db-x/issues/61)) — atomic multi-step changes; coordinate with #62.
-8. **History CLI** ([#6](https://github.com/rtorcato/db-x/issues/6)) and **MCP** ([#9](https://github.com/rtorcato/db-x/issues/9)) — audit trail + the AI-review differentiator.
+1. **Plan-time source of truth** ([#113](https://github.com/rtorcato/db-x/issues/113)) — everything below assumes a populated `current`, which CI never has today. Foundational, not optional.
+2. **Integration tests** ([#115](https://github.com/rtorcato/db-x/issues/115)) — the DDL has never been executed against a real engine in CI. Cheapest credibility win on the list.
+3. **Harden destructive detection** ([#59](https://github.com/rtorcato/db-x/issues/59)) — structured classification, not regex; makes the prod guards trustworthy.
+4. **Postgres advisory lock** ([#60](https://github.com/rtorcato/db-x/issues/60)) — real multi-runner CI safety.
+5. **Lock-safe / zero-downtime DDL** ([#62](https://github.com/rtorcato/db-x/issues/62)) — the wedge vs pgroll/Reshape/Atlas. Highest strategic value.
+6. **Dev/prod target profiles** ([#63](https://github.com/rtorcato/db-x/issues/63)) — closes the "no environment" gap.
+7. **Schema linting** ([#64](https://github.com/rtorcato/db-x/issues/64)) — Atlas `migrate lint` parity; builds on #59.
+8. **Transactional apply** ([#61](https://github.com/rtorcato/db-x/issues/61)) — atomic multi-step changes; coordinate with #62.
+9. **History CLI** ([#6](https://github.com/rtorcato/db-x/issues/6)) and **MCP** ([#9](https://github.com/rtorcato/db-x/issues/9)) — audit trail + the AI-review differentiator.
+
+Items 3, 4 and 7 are the reason #113 leads: classification, locking and linting
+all operate on a diff the target environment cannot currently compute.
 
 The through-line: DB-X becomes the best prod+dev schema tool by making **apply
 trustworthy** (guards, locks, rollback, linting) and then owning **zero-downtime DDL**,

@@ -40,22 +40,24 @@ floor that DB-X picks up:
 
 ## How DB-X relates to Infra-X
 
-Same runtime, different distribution. See the
-[architecture sketch](./roadmap.mdx#architecture-sketch) for the package
-layout.
+A fork, not a distribution. See the
+[architecture](./roadmap.mdx#architecture) for the package layout.
 
-- **Shared core.** Both projects use `@infra-x/runtime` — the JSX
-  reconciler, the diff engine, the state file, the apply/destroy lifecycle.
-  DB-X does not fork any of it.
-- **DB-X is the focused distribution** for teams whose primary concern is
-  the database. The `db-x` CLI ships only the DB libraries plus db-specific
-  subcommands (`snapshot`, `restore`, `history`, `diff`, `preview --shadow`).
-- **Components compose.** A DB-X `<Postgres>` / `<Table>` is the same kind
-  of `defineComponent` resource as anything in Infra-X — drop one inside an
-  Infra-X `<Phase>` tree and pick up DB-X's features without leaving Infra-X.
+- **Shared model, separate code.** DB-X started from Infra-X's runtime and
+  has since vendored it — the JSX reconciler, diff engine, state file and
+  apply/destroy lifecycle now live in `@db-x/runtime`. There is no
+  `@infra-x` dependency in either direction.
+- **DB-X is the database-focused project** for teams whose primary concern
+  is the schema. The `db-x` CLI ships only the DB libraries plus db-specific
+  subcommands.
+- **The contracts still line up.** A DB-X `<Postgres>` / `<Table>` is the
+  same shape of `defineComponent` resource as anything in Infra-X, so the
+  mental model transfers — but that alignment is a convention now, not a
+  shared package, and components are not cross-loadable between the two
+  CLIs.
 
-Think of Infra-X as the platform; DB-X is the first vertical built on top of
-it with its own brand and audience.
+Infra-X remains the general-purpose IaC project; DB-X went its own way to
+move on database concerns without coordinating releases across two repos.
 
 ## What DB-X isn't
 

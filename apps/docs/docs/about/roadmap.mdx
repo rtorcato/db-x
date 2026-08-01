@@ -3,53 +3,79 @@ title: Roadmap
 description: The DB-X release sequence and where it sits today.
 ---
 
-DB-X lives in the [`rtorcato/infra-x`](https://github.com/rtorcato/infra-x)
-monorepo. Releases ship per package under the `@db-x` npm scope, on their own
-cadence — independent of Infra-X.
+DB-X lives in its own repository, [`rtorcato/db-x`](https://github.com/rtorcato/db-x).
+Releases ship per package under the `@db-x` npm scope. The engine
+(`@db-x/runtime`, `@db-x/cli`) is BUSL-1.1; the libraries and snapshot drivers
+are MIT — see [`LICENSING.md`](https://github.com/rtorcato/db-x/blob/main/LICENSING.md).
 
-**No package starts before Infra-X v0.1 is out** — DB-X depends on a stable
-runtime contract.
+:::caution Experimental
+DB-X is `0.1.0-alpha.0`. The schema and API are unstable, breaking changes land
+every release, and it is **not ready for real data**. Everything below the
+"Shipped" line is planned, not built.
+:::
 
-## Architecture sketch
+## Architecture
+
+Shipped:
 
 ```
-@infra-x/runtime                ← shared JSX runtime, reconciler, state
-        │
-        ├── @db-x/runtime              ← thin re-export + DB-specific types
-        ├── @db-x/postgres-library      ← <Postgres>, <Table>, <Column>, …
-        ├── @db-x/mysql-library         ← parallel for MySQL
-        ├── @db-x/snapshot-pg-dump     ← pg_dump driver
-        ├── @db-x/snapshot-rds         ← AWS RDS snapshot driver
-        ├── @db-x/mcp                  ← MCP server
-        ├── @db-x/types-export         ← schema → .d.ts / Drizzle / sqlc
-        └── @db-x/cli                  ← `db-x` binary
+@db-x/runtime              JSX runtime, defineComponent contract, reconciler, diff engine, state I/O
+@db-x/cli                  the `db-x` binary
+@db-x/postgres-library     <DatabaseTarget>, <Postgres>, <Table>, <Column>, <Index>, <Extension>, <SeedData>, <DbUser>
+@db-x/sqlite-library       <Sqlite>, <Table>, <Column>, <Index>, <SeedData>
+@db-x/mongodb-library      <Mongo>, <Collection>, <Index>, <SeedData>
+@db-x/snapshot-pg-dump     pg_dump SnapshotDriver
+@db-x/snapshot-mongodump   mongodump SnapshotDriver
+@db-x/snapshot-sqlite      sqlite3 .backup SnapshotDriver
+```
+
+Planned, with the issue tracking each:
+
+```
+@db-x/mysql-library        #12      @db-x/snapshot-cockroachdb  #109
+@db-x/sqlserver-library    #29      @db-x/snapshot-sqlserver    #32
+@db-x/duckdb-library       #30      @db-x/snapshot-duckdb       #33
+@db-x/mcp                  #9       @db-x/types-export          #10
 ```
 
 ## Sequence
 
+Milestones are the single source of truth —
+[see them on GitHub](https://github.com/rtorcato/db-x/milestones).
+
 | Version | Theme | Headline |
 | --- | --- | --- |
-| **v0.0** | Scaffold + rich diff | Workspace packages exist; `<Table>` diff handles type / default / NOT NULL changes and column renames via `from=`. Forks the work `@infra-x/postgres-library` would otherwise need to do, then upstreams it. |
-| **v0.1** | Schema Time Machine | `db-x snapshot create`, `db-x restore <id>`, `db-x history`, `db-x diff <revA> <revB>`. Snapshot id linked to state revision. Postgres only. |
+| **v0.0** | Scaffold + rich diff | Workspace packages exist; `<Table>` diff handles type / default / NOT NULL changes and column renames via `from=`. |
+| **v0.1** | Time Machine | `db-x snapshot create`, `db-x history`, `db-x diff <revA> <revB>`. Snapshot id pinned to state revision. `db-x restore` has shipped; the rest is [#6](https://github.com/rtorcato/db-x/issues/6). |
 | **v0.2** | Shadow-DB preview | `db-x preview --shadow` spins an ephemeral copy, runs the DDL, returns a structured report (timings, locks, errors). |
 | **v0.3** | MCP server | `db-x mcp` exposes describe / explain / preview / snapshot-history / restore-preview as tools. The marketing-ready milestone. |
 | **v0.4** | Type export | Generate `.d.ts` from the live schema; add Drizzle schema emit as an optional second target. |
-| **v1.0** | MySQL parity | Managed-DB drivers, multi-environment apply. |
+| **v1.0** | Beyond Postgres | Managed-DB drivers, multi-environment apply. |
+| **v1.1** | More SQL engines | MySQL, SQL Server, DuckDB — plus the beyond-relational exploration. |
 
 ## Live trackers
 
-- [#24 Phase 5 tracker](https://github.com/rtorcato/infra-x/issues/24) — DB-X-driven deprecation of the `@infra-x/postgres-library` and `@infra-x/mysql-library` libraries.
-- [#5 Rich column diff](https://github.com/rtorcato/infra-x/issues/5) — type / default / NOT NULL / UNIQUE detection in the Postgres `<Table>` component (v0.0 follow-up).
-- [#32 Docs site](https://github.com/rtorcato/infra-x/issues/32) — this site (Docusaurus migration; closed by the PR that lands these pages).
-- [#34 TypeDoc wiring](https://github.com/rtorcato/infra-x/issues/34) — auto-generated API reference for both the Infra-X and DB-X docs sites.
+- [#113 Plan-time source of truth](https://github.com/rtorcato/db-x/issues/113) — the diff engine plans against local state and never reads the live database. Upstream of the guard, lock and linting work.
+- [#62 Lock-safe / zero-downtime DDL](https://github.com/rtorcato/db-x/issues/62) — the competitive wedge vs pgroll and Reshape.
+- [#11 v1.0 — Beyond Postgres](https://github.com/rtorcato/db-x/issues/11) — managed drivers, multi-environment apply.
+- [#44 v1.1 — More SQL engines](https://github.com/rtorcato/db-x/issues/44) — and the beyond-relational exploration.
+- [#6 Time Machine CLI](https://github.com/rtorcato/db-x/issues/6) — `snapshot` / `history` / `diff`.
+- [#9 MCP server](https://github.com/rtorcato/db-x/issues/9) — the AI-review differentiator.
+
+Competitive positioning and the gap-closing roadmap live in
+[`docs/competition.md`](https://github.com/rtorcato/db-x/blob/main/docs/competition.md);
+the sharding and large-scale design note lives in
+[`docs/large-scale.md`](https://github.com/rtorcato/db-x/blob/main/docs/large-scale.md).
 
 ## Relationship to Infra-X
 
-- DB-X depends on `@infra-x/runtime`; **Infra-X never depends on DB-X**. The
-  dependency points one way.
-- Components are reusable in both directions: an Infra-X user can drop
-  `<Table>` from `@db-x/postgres-library` inside an `<Infra>` tree and get
-  DB-X's richer features without switching CLIs.
-- The `db-x` CLI never exposes Infra-X's general-purpose `apply` for arbitrary
-  resource types — it's scoped to DB resources. Conversely Infra-X's CLI does
-  not expose `db-x snapshot` / `db-x restore`.
+DB-X began as a fork of [Infra-X](https://github.com/rtorcato/infra-x) and has
+since vendored the runtime — **there is no `@infra-x` dependency in the tree
+today**, and the two projects release independently.
+
+What carried over is the model, not the code path: the same
+`defineComponent` contract, the same phase ordering, the same state shape. A
+component written against `@db-x/runtime` is not automatically loadable by
+Infra-X's CLI, and vice versa. The `db-x` binary is scoped to database
+resources and never exposes a general-purpose `apply` for arbitrary resource
+types.

@@ -105,6 +105,15 @@ interface TableResourceOutputs {
 	columns: ColumnSpec[]
 	/** Index specs, so the next diff can detect removed indexes. */
 	indexes: IndexSpec[]
+	/**
+	 * Column attributes `refresh` found changed out of band — one human-readable
+	 * line per column. Deliberately NOT folded back into `columns`: SQLite has no
+	 * `ALTER COLUMN` (#56), so a rewritten spec would make `diffTable` throw and
+	 * take `preview` down for the whole deployment over a change nothing in the
+	 * JSX can fix. Reporting it and leaving `columns` alone keeps `preview`
+	 * usable; `apply` clears the key by not emitting it.
+	 */
+	columnDrift?: string[]
 	[key: string]: unknown
 }
 
@@ -192,10 +201,10 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 	 * differences (SQLite reports resolved type names and its own default
 	 * spellings, which never round-trip to the authored props exactly).
 	 *
-	 * ponytail: compares the set of column and index NAMES, not types,
-	 * defaults or nullability. That catches the failure modes that actually
-	 * happen — a table dropped, a column added or removed out of band — and
-	 * needs no type-normalisation table. Deepen it when a real case demands.
+	 * Column *attribute* drift (type, NOT NULL, default, primary key) is reported
+	 * in `columnDrift` rather than folded back into `columns` — see the field's
+	 * doc comment for why rewriting the spec would break `preview`. Index shape
+	 * drift IS written into `indexes`, because a DROP + CREATE fixes it.
 	 */
 	refresh: async (state, ctx) => {
 		const parent = findSqliteParent(ctx)
@@ -206,11 +215,35 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 		const table = state.outputs.name
 		const gone = { ...state.outputs, columns: [], indexes: [] }
 
-		let liveColumns: Array<Record<string, unknown>>
-		let liveIndexes: Array<Record<string, unknown>>
+		let liveColumns: LiveColumn[]
+		let liveIndexList: Array<Record<string, unknown>>
+		let liveIndexes: IndexSpec[]
 		try {
-			liveColumns = await queryJson(parent, `PRAGMA table_info(${quoteIdent(table)})`, ctx)
-			liveIndexes = await queryJson(parent, `PRAGMA index_list(${quoteIdent(table)})`, ctx)
+			liveColumns = (await queryJson(
+				parent,
+				`PRAGMA table_info(${quoteIdent(table)})`,
+				ctx
+			)) as unknown as LiveColumn[]
+			liveIndexList = await queryJson(parent, `PRAGMA index_list(${quoteIdent(table)})`, ctx)
+			// `index_list` names the indexes; only `index_info` says what they
+			// cover, so an index rebuilt over different columns needs this second
+			// pragma to be visible at all. Auto-indexes back UNIQUE and PRIMARY KEY
+			// constraints, and are not ours to track.
+			liveIndexes = []
+			for (const row of liveIndexList) {
+				if (row.origin !== undefined && row.origin !== 'c') continue
+				const name = String(row.name)
+				if (name.startsWith('sqlite_autoindex_')) continue
+				const cols = await queryJson(parent, `PRAGMA index_info(${quoteIdent(name)})`, ctx)
+				liveIndexes.push({
+					name,
+					columns: cols
+						.slice()
+						.sort((a, b) => Number(a.seqno) - Number(b.seqno))
+						.map((c) => String(c.name)),
+					...(row.unique ? { unique: true } : {}),
+				})
+			}
 		} catch (err) {
 			// `-readonly` refuses to open a database file that isn't there, which
 			// is exactly the "I deleted the .db" case — report the table as gone
@@ -223,28 +256,43 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 
 		const liveColNames = liveColumns.map((c) => String(c.name)).sort()
 		const storedColNames = state.outputs.columns.map((c) => c.name).sort()
-		// Auto-indexes back UNIQUE constraints; they are not ours to track.
-		const liveIdxNames = liveIndexes
-			.map((i) => String(i.name))
-			.filter((n) => !n.startsWith('sqlite_autoindex_'))
-			.sort()
-		const storedIdxNames = state.outputs.indexes.map((i) => i.name).sort()
-
-		const inSync =
-			JSON.stringify(liveColNames) === JSON.stringify(storedColNames) &&
-			JSON.stringify(liveIdxNames) === JSON.stringify(storedIdxNames)
-		if (inSync) return state.outputs
-
-		// Keep the authored spec for every column that still exists, and only
-		// describe genuinely-unknown ones from introspection. Returning SQLite's
-		// own view wholesale would rewrite `integer` as `INTEGER` and re-spell
-		// defaults, which the next diff reads as a type change — and SQLite
-		// cannot ALTER COLUMN, so `preview` would hard-fail on a database that
-		// is merely missing one column.
-		const storedColumns = new Map(state.outputs.columns.map((c) => [c.name, c]))
 		const storedIndexes = new Map(state.outputs.indexes.map((i) => [i.name, i]))
+		const drift = collectColumnDrift(state.outputs.columns, liveColumns)
+		for (const line of drift) ctx.log.warn(`${table}.${line} — needs a table rebuild (#56)`)
+
+		const namesMatch = JSON.stringify(liveColNames) === JSON.stringify(storedColNames)
+		// Shape, not just name: an index rebuilt over different columns keeps its
+		// name, so comparing names alone reports an in-sync database.
+		const indexesMatch =
+			liveIndexes.length === storedIndexes.size &&
+			liveIndexes.every((i) => {
+				const stored = storedIndexes.get(i.name)
+				return stored !== undefined && indexShape(stored) === indexShape(i)
+			})
+
+		if (namesMatch && indexesMatch && drift.length === 0) {
+			// In sync. Return the stored outputs byte-for-byte so refresh reports
+			// no drift rather than churning on cosmetic differences (SQLite
+			// reports resolved type names and its own default spellings, which
+			// never round-trip to the authored props exactly) — but drop a
+			// `columnDrift` left by an earlier run, now that it is repaired.
+			if (state.outputs.columnDrift === undefined) return state.outputs
+			const { columnDrift: _repaired, ...cleared } = state.outputs
+			return cleared
+		}
+
+		// Keep the authored spec for every column and index that still exists,
+		// and only describe genuinely-unknown ones from introspection. Returning
+		// SQLite's own view wholesale would rewrite `integer` as `INTEGER` and
+		// re-spell defaults, which the next diff reads as a type change — and
+		// SQLite cannot ALTER COLUMN, so `preview` would hard-fail on a database
+		// that is merely missing one column.
+		const storedColumns = new Map(state.outputs.columns.map((c) => [c.name, c]))
+		// Rebuilt from scratch below when it still applies, so a repaired column
+		// doesn't leave last run's warning behind.
+		const { columnDrift: _previous, ...base } = state.outputs
 		return {
-			...state.outputs,
+			...base,
 			columns: liveColumns.map((c) => {
 				const name = String(c.name)
 				return (
@@ -259,7 +307,14 @@ const TableResource = defineComponent<TableResourceProps, TableResourceOutputs>(
 					}
 				)
 			}),
-			indexes: liveIdxNames.map((name) => storedIndexes.get(name) ?? { name, columns: [] }),
+			// The live shape wins for an index that moved — that is the drift the
+			// next `diffTable` turns into a DROP + CREATE. Authored specs survive
+			// unchanged so `description` isn't lost on every refresh.
+			indexes: liveIndexes.map((i) => {
+				const stored = storedIndexes.get(i.name)
+				return stored && indexShape(stored) === indexShape(i) ? stored : i
+			}),
+			...(drift.length > 0 ? { columnDrift: drift } : {}),
 		}
 	},
 	// Pure diff at plan time so `preview` / `apply` can classify destructive
@@ -390,6 +445,104 @@ export function buildCreateIndex(tableName: string, idx: IndexSpec): string {
 	return `CREATE ${unique}INDEX IF NOT EXISTS "${idx.name}" ON "${tableName}" (${cols})`
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Introspection normalisation — pure, so the false-positive surface is testable
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One `PRAGMA table_info` row. */
+export interface LiveColumn {
+	name: string
+	type: string
+	notnull: number
+	dflt_value: string | null
+	pk: number
+}
+
+/**
+ * Reduce a `DEFAULT` clause to a comparable value.
+ *
+ * SQLite stores the default as written but strips one layer of parens on the
+ * way back out: `DEFAULT (datetime('now'))` reads back as `datetime('now')`,
+ * while `columnSql` always emits the parenthesised form. Stripping both sides
+ * is what stops `examples/sqlite`'s `created_at` reporting drift forever.
+ * Numbers are compared by value so `0`, `0.0` and `(0)` agree.
+ */
+export function normalizeDefault(value: string | null | undefined): string | null {
+	if (value === null || value === undefined) return null
+	const trimmed = value.trim()
+	if (trimmed === '') return null
+	const bare =
+		trimmed.startsWith('(') && trimmed.endsWith(')') ? trimmed.slice(1, -1).trim() : trimmed
+	if (/^-?\d+(\.\d+)?$/.test(bare)) return String(Number(bare))
+	if (BARE_DEFAULTS.has(bare.toLowerCase())) return bare.toLowerCase()
+	return bare
+}
+
+/** The authored default, rendered the way `apply` would have written it. */
+function specDefault(spec: ColumnSpec): string | null {
+	if (spec.default === undefined) return null
+	try {
+		return normalizeDefault(formatDefault(spec.name, spec.default))
+	} catch {
+		// An unrenderable default can't have been applied, so there is nothing
+		// to compare against. Refusing here would abort the whole read-only
+		// refresh over a diagnostic the plan already reports.
+		return normalizeDefault(spec.default)
+	}
+}
+
+/**
+ * Compare one authored column against what `PRAGMA table_info` reports, and
+ * describe the difference — or return `null` when they agree.
+ *
+ * Every comparison mirrors what `columnSql` actually emits, which is what keeps
+ * an in-sync database quiet: `serial` resolves to `INTEGER`, `NOT NULL` is
+ * suppressed on a primary key (and SQLite reports `notnull=0` for
+ * `INTEGER PRIMARY KEY` regardless), and defaults go through `normalizeDefault`.
+ *
+ * ponytail: `unique` is not compared — it lives in an `sqlite_autoindex_*`
+ * entry rather than in `table_info`, so checking it means a second pragma per
+ * column. Add that when a dropped UNIQUE actually bites someone.
+ */
+export function columnDrift(spec: ColumnSpec, live: LiveColumn): string | null {
+	const want = resolveType(spec.type).toUpperCase()
+	const got = resolveType(String(live.type)).toUpperCase()
+	if (want !== got) return `${spec.name}: type is ${got}, expected ${want}`
+
+	const wantNotNull = !!spec.notNull && !spec.primaryKey
+	if (wantNotNull !== !!live.notnull) {
+		return `${spec.name}: is ${live.notnull ? 'NOT NULL' : 'nullable'}, expected ${wantNotNull ? 'NOT NULL' : 'nullable'}`
+	}
+
+	const wantPk = !!spec.primaryKey
+	if (wantPk !== live.pk > 0) {
+		return `${spec.name}: is ${live.pk > 0 ? '' : 'not '}a primary key, expected ${wantPk ? '' : 'not '}to be`
+	}
+
+	const wantDefault = specDefault(spec)
+	const gotDefault = normalizeDefault(live.dflt_value)
+	if (wantDefault !== gotDefault) {
+		return `${spec.name}: default is ${gotDefault ?? 'unset'}, expected ${wantDefault ?? 'unset'}`
+	}
+
+	return null
+}
+
+/** Every attribute difference between the stored specs and the live table. */
+export function collectColumnDrift(stored: ColumnSpec[], live: LiveColumn[]): string[] {
+	const liveByName = new Map(live.map((c) => [String(c.name), c]))
+	const drift: string[] = []
+	for (const spec of stored) {
+		const found = liveByName.get(spec.name)
+		// A column that is missing entirely is name-set drift, reported by the
+		// caller rewriting `columns` — not an attribute change.
+		if (!found) continue
+		const reason = columnDrift(spec, found)
+		if (reason) drift.push(reason)
+	}
+	return drift
+}
+
 /**
  * Pure diff function — exported so `db-x preview` / `db-x mcp` can render
  * the SQL without running it.
@@ -478,9 +631,9 @@ export function diffTable(
 	// needs an explicit drop first.
 	const changedIndexes = nextIndexes.filter((i) => {
 		const p = priorIndexByName.get(i.name)
-		// `refresh` records `{ name, columns: [] }` for an index it never saw
-		// authored (PRAGMA index_list has no column info) — an unknown shape, not
-		// a changed one. Comparing it would drop and rebuild on every apply.
+		// State written before `refresh` read `PRAGMA index_info` records
+		// `{ name, columns: [] }` — an unknown shape, not a changed one.
+		// Comparing it would drop and rebuild on the first apply after an upgrade.
 		if (!p || p.columns.length === 0) return false
 		return indexShape(p) !== indexShape(i)
 	})

@@ -1,6 +1,16 @@
 import { getComponentSpec, type PlanAction } from '@db-x/runtime'
 import { describe, expect, it } from 'vitest'
-import { type ColumnSpec, type IndexSpec, buildCreateTable, columnSql, diffTable } from './table.js'
+import {
+	type ColumnSpec,
+	type IndexSpec,
+	type LiveColumn,
+	buildCreateTable,
+	collectColumnDrift,
+	columnDrift,
+	columnSql,
+	diffTable,
+	normalizeDefault,
+} from './table.js'
 
 const col = (o: Partial<ColumnSpec> & { name: string }): ColumnSpec => ({ type: 'text', ...o })
 const prior = (columns: ColumnSpec[], indexes: IndexSpec[] = []) => ({ columns, indexes })
@@ -171,9 +181,9 @@ describe('diffTable — indexes', () => {
 		expect(diff.sql).toEqual([])
 	})
 
-	// `refresh` records `{ name, columns: [] }` for an index it never saw
-	// authored — PRAGMA index_list has no column info. Treating that unknown
-	// shape as "changed" would rebuild the index on every apply.
+	// State written before `refresh` read `PRAGMA index_info` records
+	// `{ name, columns: [] }` — an unknown shape, not a changed one. Treating it
+	// as changed would rebuild the index on the first apply after an upgrade.
 	it('leaves an index with an unknown prior shape alone', () => {
 		const a = col({ name: 'a', type: 'int' })
 		const diff = diffTable(
@@ -430,5 +440,153 @@ describe('TableResource.apply — outputs record what ran, not what was wanted',
 		const prior = { props: {}, outputs: { name: 'todos', columns: live, indexes: [] } }
 		const outputs = await applyHook(props, ctx, prior)
 		expect(outputs.columns.map((c) => c.name)).toEqual(['id', 'title'])
+	})
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  refresh() attribute comparison (#84)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// This is where the false positives live: report drift on an in-sync database
+// and every `refresh` cries wolf about a change SQLite cannot even apply.
+// Every `live` row below is real `PRAGMA table_info` output, captured from a
+// table built by this library's own `columnSql`.
+
+const live = (o: Partial<LiveColumn> & { name: string }): LiveColumn => ({
+	type: 'TEXT',
+	notnull: 0,
+	dflt_value: null,
+	pk: 0,
+	...o,
+})
+
+describe('normalizeDefault', () => {
+	const cases: Array<[string, string | null | undefined, string | null]> = [
+		['unset', null, null],
+		['undefined', undefined, null],
+		['blank', '   ', null],
+		// SQLite strips one layer of parens on the way back out, so the authored
+		// `(datetime('now'))` and the reported `datetime('now')` must agree.
+		['parenthesised expression', "(datetime('now'))", "datetime('now')"],
+		['bare expression', "datetime('now')", "datetime('now')"],
+		['integer', '0', '0'],
+		['float spelling of an integer', '0.0', '0'],
+		['parenthesised number', '(0)', '0'],
+		['negative', '-1', '-1'],
+		['string literal', "'blue'", "'blue'"],
+		['empty string literal', "''", "''"],
+		['keyword, any case', 'CURRENT_TIMESTAMP', 'current_timestamp'],
+	]
+	for (const [label, input, expected] of cases) {
+		it(`normalizes ${label}`, () => expect(normalizeDefault(input)).toBe(expected))
+	}
+})
+
+describe('columnDrift — an in-sync database stays quiet', () => {
+	// Every column of examples/sqlite's `todos`, paired with what SQLite
+	// actually reports for it. None may drift.
+	const inSync: Array<[ColumnSpec, LiveColumn]> = [
+		[
+			col({ name: 'id', type: 'integer', primaryKey: true }),
+			live({ name: 'id', type: 'INTEGER', pk: 1 }),
+		],
+		[col({ name: 'title', type: 'text', notNull: true }), live({ name: 'title', notnull: 1 })],
+		[
+			col({ name: 'done', type: 'integer', notNull: true, default: '0' }),
+			live({ name: 'done', type: 'INTEGER', notnull: 1, dflt_value: '0' }),
+		],
+		[
+			col({ name: 'color', type: 'text', default: "'blue'" }),
+			live({ name: 'color', dflt_value: "'blue'" }),
+		],
+		[
+			col({ name: 'dueDate', type: 'text', default: "''" }),
+			live({ name: 'dueDate', dflt_value: "''" }),
+		],
+		[
+			col({ name: 'created_at', type: 'text', notNull: true, default: "(datetime('now'))" }),
+			live({ name: 'created_at', notnull: 1, dflt_value: "datetime('now')" }),
+		],
+		// `serial` + primaryKey is emitted as INTEGER PRIMARY KEY AUTOINCREMENT,
+		// and SQLite reports notnull=0 for it no matter what.
+		[idCol, live({ name: 'id', type: 'INTEGER', pk: 1 })],
+		// A primary key suppresses the NOT NULL clause, so the spec asking for it
+		// and the table not reporting it is agreement, not drift.
+		[
+			col({ name: 'id', type: 'integer', primaryKey: true, notNull: true }),
+			live({ name: 'id', type: 'INTEGER', pk: 1 }),
+		],
+		// Friendly aliases resolve to the storage class on both sides.
+		[col({ name: 'flag', type: 'boolean' }), live({ name: 'flag', type: 'INTEGER' })],
+		[col({ name: 'ref', type: 'uuid' }), live({ name: 'ref', type: 'TEXT' })],
+		[col({ name: 'n', type: 'int' }), live({ name: 'n', type: 'INTEGER' })],
+	]
+	for (const [spec, row] of inSync) {
+		it(`${spec.name}: ${spec.type}${spec.default ? ` default ${spec.default}` : ''}`, () => {
+			expect(columnDrift(spec, row)).toBeNull()
+		})
+	}
+})
+
+describe('columnDrift — a hand-changed column is reported', () => {
+	it('detects a type change', () => {
+		const spec = col({ name: 'done', type: 'integer' })
+		expect(columnDrift(spec, live({ name: 'done', type: 'TEXT' }))).toContain('type is TEXT')
+	})
+
+	it('detects a dropped NOT NULL', () => {
+		const spec = col({ name: 'title', notNull: true })
+		expect(columnDrift(spec, live({ name: 'title', notnull: 0 }))).toContain('is nullable')
+	})
+
+	it('detects an added NOT NULL', () => {
+		expect(columnDrift(col({ name: 'title' }), live({ name: 'title', notnull: 1 }))).toContain(
+			'is NOT NULL'
+		)
+	})
+
+	it('detects a changed default', () => {
+		const spec = col({ name: 'color', default: "'blue'" })
+		expect(columnDrift(spec, live({ name: 'color', dflt_value: "'red'" }))).toContain(
+			"default is 'red'"
+		)
+	})
+
+	it('detects a removed default', () => {
+		const spec = col({ name: 'done', type: 'integer', default: '0' })
+		expect(columnDrift(spec, live({ name: 'done', type: 'INTEGER' }))).toContain('default is unset')
+	})
+
+	it('detects a lost primary key', () => {
+		expect(columnDrift(idCol, live({ name: 'id', type: 'INTEGER', pk: 0 }))).toContain(
+			'is not a primary key'
+		)
+	})
+})
+
+describe('collectColumnDrift', () => {
+	it('reports every drifted column and nothing else', () => {
+		const stored = [
+			col({ name: 'id', type: 'integer', primaryKey: true }),
+			col({ name: 'title', notNull: true }),
+			col({ name: 'done', type: 'integer', default: '0' }),
+		]
+		const rows = [
+			live({ name: 'id', type: 'INTEGER', pk: 1 }),
+			live({ name: 'title', notnull: 0 }),
+			live({ name: 'done', type: 'TEXT', dflt_value: '0' }),
+		]
+		const drift = collectColumnDrift(stored, rows)
+		expect(drift).toHaveLength(2)
+		expect(drift[0]).toContain('title')
+		expect(drift[1]).toContain('done')
+	})
+
+	// A column that vanished is name-set drift; refresh rewrites `columns` for
+	// that, and the diff plans the ADD COLUMN. Reporting it here too would
+	// double-count it as an unfixable rebuild.
+	it('ignores a column that is missing entirely', () => {
+		const stored = [col({ name: 'id' }), col({ name: 'gone' })]
+		expect(collectColumnDrift(stored, [live({ name: 'id' })])).toEqual([])
 	})
 })

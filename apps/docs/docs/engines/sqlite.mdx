@@ -87,14 +87,41 @@ pnpm restore --yes                        # roll the file back
 
 ## Drift
 
-`db-x refresh` reads `PRAGMA table_info` and `PRAGMA index_list` through
-`sqlite3 -readonly`. The read-only flag is load-bearing: plain
-`sqlite3 missing.db` *creates* an empty database, so a drift check without it
-would quietly manufacture the very file it was asked to look for.
+`db-x refresh` reads `PRAGMA table_info`, `PRAGMA index_list` and
+`PRAGMA index_info` through `sqlite3 -readonly`. The read-only flag is
+load-bearing: plain `sqlite3 missing.db` *creates* an empty database, so a drift
+check without it would quietly manufacture the very file it was asked to look
+for.
 
 Deleting the `.db` file is therefore reported honestly as "the table is gone",
 and `preview` plans a fresh `CREATE TABLE` rather than an `ALTER` against
 nothing.
+
+**Repairable drift is written into state.** A column added or dropped by hand,
+or an index rebuilt over different columns, becomes a change `preview` plans and
+`apply` runs.
+
+**Unrepairable drift is reported, not written.** A column whose type, default,
+nullability or primary key moved out of band cannot be fixed without a table
+rebuild ([#56](https://github.com/rtorcato/db-x/issues/56)), so `refresh` names
+it and leaves the recorded spec alone:
+
+```
+[table:todos] WARN todos.done: type is TEXT, expected INTEGER — needs a table rebuild (#56)
+[table:todos] WARN todos.color: default is 'red', expected 'blue' — needs a table rebuild (#56)
+~ table:todos   @db-x/sqlite-library:table   drift: columnDrift
+```
+
+Folding that into the recorded columns would make the next diff hit the
+`ALTER COLUMN` refusal above and take `preview` down for the whole deployment,
+over a change no JSX edit can fix. Repair the table by hand and the next
+`refresh` clears the warning.
+
+The comparison is normalised against the SQL this library writes, so an in-sync
+database stays quiet: `serial` resolves to `INTEGER`, a primary key suppresses
+`NOT NULL`, and `DEFAULT (datetime('now'))` reads back as `datetime('now')`.
+`unique` is the one attribute not compared — SQLite keeps it in an
+`sqlite_autoindex_*` entry rather than in `table_info`.
 
 ## Next
 

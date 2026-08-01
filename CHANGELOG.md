@@ -30,6 +30,29 @@ package tracks its own version in its `package.json`.
 
 ### Added
 
+- **SQLite drift detection now looks past names.** `<Table>`'s `refresh()`
+  compared the *set* of column and index names, so a column rebuilt with a
+  different type, default, nullability or primary key read as in sync, and so did
+  an index rebuilt over different columns — `PRAGMA index_list` gives the name,
+  and only `PRAGMA index_info` says what it covers.
+
+  Index shape drift lands in `outputs.indexes`, where the existing diff turns it
+  into a `DROP INDEX` + `CREATE INDEX`; verified end to end against
+  `examples/sqlite`. Column *attribute* drift is reported in a new
+  `outputs.columnDrift` and deliberately not folded back into `outputs.columns`:
+  SQLite has no `ALTER COLUMN` (#56), so a rewritten spec would make the diff
+  throw and take `preview` down for the whole deployment over a change no JSX
+  edit can fix. `db-x refresh` names each drifted attribute and points at #56;
+  `apply` clears the key by not emitting it.
+
+  The comparison is normalised against what `columnSql` actually writes, which is
+  what keeps an in-sync database quiet — `serial` resolves to `INTEGER`, a
+  primary key suppresses `NOT NULL` (SQLite reports `notnull=0` for
+  `INTEGER PRIMARY KEY` regardless), and SQLite strips one layer of parens off a
+  default on the way back out, so the authored `(datetime('now'))` and the
+  reported `datetime('now')` agree. `unique` is still not compared: it lives in
+  an `sqlite_autoindex_*` entry rather than in `table_info`.
+
 - **Drift detection for Postgres and MongoDB.** `<Table>` and `<Collection>`
   grew the `refresh()` hook SQLite already had, so `db-x refresh` no longer
   answers "no refresh() hook" for every resource on those engines and drift
